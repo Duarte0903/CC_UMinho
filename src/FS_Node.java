@@ -1,5 +1,6 @@
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.io.File;
 
 public class FS_Node {
@@ -10,7 +11,12 @@ public class FS_Node {
 
     // Constructors
 
-    
+    public FS_Node(String ip_adress, int tcp_port, int udp_port) {
+        this.ip_adress = ip_adress;
+        this.tcp_port = tcp_port;
+        this.udp_port = udp_port;
+        this.shared_files = new HashMap<String,List<File>>();
+    }
 
     // Getters
 
@@ -49,6 +55,13 @@ public class FS_Node {
     }
 
     // Methods
+
+    @Override
+    public String toString() {
+        return "Node: " + this.ip_adress + 
+               "TCP Port:" + this.tcp_port + 
+               "UDP Port:" + this.udp_port;
+    }           
 
 
 }
