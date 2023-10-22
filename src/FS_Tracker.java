@@ -1,8 +1,8 @@
-import java.io.File;
-import java.util.Map;
-import java.util.List;
+import java.util.*;
+import java.net.*;
 
 public class FS_Tracker {
+    private String ip_address;
     private int tcp_port;
 
     // Constructors
@@ -22,5 +22,5 @@ public class FS_Tracker {
     }
 
     // Methods
-
+    
 }
