@@ -65,8 +65,20 @@ public class FS_Node {
 
     // Methods
 
-    public void register_node(String tracker_ip_address, int tracker_tcp_port) {
-        
+    public void connect_to_tracker(String tracker_ip_address, int tracker_tcp_port) {
+        try {
+            Socket socket = new Socket(tracker_ip_address, tracker_tcp_port);
+            
+            System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
+        } catch(Exception e) {
+            System.out.println("\u001B[31mNode failed to connect to tracker\u001B[0m\n");
+            System.err.println("Details: " + e.getMessage() + "\n");
+            e.printStackTrace();
+        }
+    }
+
+    public void end_connection_with_tracker() {
+
     }
 
     public void add_file(String file_name, Set<FS_Block> blocks) {
@@ -80,6 +92,4 @@ public class FS_Node {
                "TCP Port:" + this.tcp_port + 
                "UDP Port:" + this.udp_port;
     }           
-
-
 }
