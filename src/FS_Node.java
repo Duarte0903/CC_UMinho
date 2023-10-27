@@ -7,7 +7,7 @@ public class FS_Node {
     private String ip_adress;
     private int tcp_port;
     private int udp_port;
-    private Map<String, Set<FS_Block>> shared_files;   // A String corresponde ao nome do arquivo e o Set aos blocos individuais do arquivo 
+    private Map<String, Set<File>> shared_files;   // A String corresponde ao nome do arquivo e o Set aos blocos individuais do arquivo 
 
     // Constructors
 
@@ -16,7 +16,7 @@ public class FS_Node {
         this.ip_adress = ip_adress;
         this.tcp_port = tcp_port;
         this.udp_port = udp_port;
-        this.shared_files = new HashMap<String, Set<FS_Block>>();
+        this.shared_files = new HashMap<String, Set<File>>();
     }
 
     // Getters
@@ -37,7 +37,7 @@ public class FS_Node {
         return this.udp_port;
     }
 
-    public Map<String, Set<FS_Block>> get_shared_files() {
+    public Map<String, Set<File>> get_shared_files() {
         return this.shared_files;
     }
 
@@ -59,30 +59,25 @@ public class FS_Node {
         this.udp_port = udp_port;
     }
 
-    public void set_shared_files(Map<String, Set<FS_Block>> shared_files) {
+    public void set_shared_files(Map<String, Set<File>> shared_files) {
         this.shared_files = shared_files;
     }
 
     // Methods
 
     public void connect_to_tracker(String tracker_ip_address, int tracker_tcp_port) {
-        try {
-            Socket socket = new Socket(tracker_ip_address, tracker_tcp_port);
-            
-            System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
-        } catch(Exception e) {
-            System.out.println("\u001B[31mNode failed to connect to tracker\u001B[0m\n");
-            System.err.println("Details: " + e.getMessage() + "\n");
-            e.printStackTrace();
-        }
+    }
+
+    public void connect_to_node() {
+
     }
 
     public void end_connection_with_tracker() {
 
     }
 
-    public void add_file(String file_name, Set<FS_Block> blocks) {
-        this.shared_files.put(file_name, blocks);
+    public void add_file(File file, String folder_name) {
+        this.shared_files.get(folder_name).add(file);
     }
 
     @Override
@@ -91,5 +86,21 @@ public class FS_Node {
                "IP Address: " + this.ip_adress + 
                "TCP Port:" + this.tcp_port + 
                "UDP Port:" + this.udp_port;
-    }           
+    }    
+    
+    public static void main(String[] args) {
+        String tracker_ip_address = "10.0.1.10";
+        int tracker_tcp_port = 42069;
+
+        try (Socket socket = new Socket(tracker_ip_address, tracker_tcp_port)) {
+            ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+            ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+            System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
+
+        } catch (Exception e) {
+            System.out.println("\u001B[31mNode failed to connect to tracker\u001B[0m\n");
+            System.err.println("Details: " + e.getMessage() + "\n");
+            e.printStackTrace();
+        }
+    }
 }
