@@ -7,7 +7,7 @@ public class FS_Node {
     private String ip_adress;
     private int tcp_port;
     private int udp_port;
-    private Map<String, Set<File>> shared_files;   // A String corresponde ao nome do arquivo e o Set aos blocos individuais do arquivo 
+    private Map<String, Set<File>> shared_files;   // A String corresponde ao nome do arquivo e o Set a pastas de ficheiros  
 
     // Constructors
 
@@ -95,6 +95,7 @@ public class FS_Node {
         try (Socket socket = new Socket(tracker_ip_address, tracker_tcp_port)) {
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
             ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+
             System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
 
         } catch (Exception e) {

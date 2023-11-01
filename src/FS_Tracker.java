@@ -2,15 +2,13 @@ import java.util.*;
 import java.net.*;
 
 public class FS_Tracker {
-    private String ip_address;
-    private int tcp_port;
+    private String ip_address = "10.0.1.10";
+    private int tcp_port = 42069;
     private Map<String, List<String>> nodes;  // ip do nodo e lista com o nome dos ficheiros do nodo
 
     // Constructors
 
-    public FS_Tracker(String ip_address, int tcp_port) {
-        this.ip_address = ip_address;
-        this.tcp_port = tcp_port;
+    public FS_Tracker() {
         this.nodes = new HashMap<String, List<String>>();
     }
 
@@ -60,5 +58,9 @@ public class FS_Tracker {
             }
         }
         return file_node;
+    }
+
+    public static void main(String[] args) {
+        FS_Tracker tracker = new FS_Tracker();
     }
 }
