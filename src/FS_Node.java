@@ -3,7 +3,6 @@ import java.io.*;
 import java.net.*;
 
 public class FS_Node {
-    private String node_name;
     private String ip_adress;
     private int tcp_port;
     private int udp_port;
@@ -11,19 +10,11 @@ public class FS_Node {
 
     // Constructors
 
-    public FS_Node(String node_name, String ip_adress, int tcp_port, int udp_port) {
-        this.node_name = node_name;
-        this.ip_adress = ip_adress;
-        this.tcp_port = tcp_port;
-        this.udp_port = udp_port;
+    public FS_Node() {
         this.shared_files = new HashMap<String, Set<File>>();
     }
 
     // Getters
-
-    public String get_node_name() {
-        return this.node_name;
-    }
 
     public String get_node_ip_adress() {
         return this.ip_adress;
@@ -42,10 +33,6 @@ public class FS_Node {
     }
 
     // Setters
-
-    public void set_node_name(String node_name) {
-        this.node_name = node_name;
-    }
 
     public void set_node_ip_adress(String ip_adress) {
         this.ip_adress = ip_adress;
@@ -82,8 +69,7 @@ public class FS_Node {
 
     @Override
     public String toString() {
-        return "Node Name:" + this.node_name +
-               "IP Address: " + this.ip_adress + 
+        return "IP Address: " + this.ip_adress + 
                "TCP Port:" + this.tcp_port + 
                "UDP Port:" + this.udp_port;
     }    
@@ -91,6 +77,8 @@ public class FS_Node {
     public static void main(String[] args) {
         String tracker_ip_address = "10.0.1.10";
         int tracker_tcp_port = 42069;
+
+        FS_Node node = new FS_Node();
 
         try (Socket socket = new Socket(tracker_ip_address, tracker_tcp_port)) {
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
