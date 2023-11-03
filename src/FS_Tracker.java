@@ -62,22 +62,25 @@ public class FS_Tracker {
     }
 
     private static void handle_node_connections(Socket client_socket) {
-        System.out.println("Concectado");
+        InetAddress nodeAddress = client_socket.getInetAddress();
+        String nodeIp = nodeAddress.getHostAddress();
+
+        System.out.println("Concectado " + nodeIp);
     }
 
     public static void main(String[] args) {
         FS_Tracker tracker = new FS_Tracker();
 
         try (ServerSocket serverSocket = new ServerSocket(tracker.get_tracker_tcp_port())) {
-        System.out.println("\u001B[32mTracker is waiting for connections...\u001B[0m\n");
+            System.out.println("\u001B[32mTracker is waiting for connections...\u001B[0m\n");
 
-        while (true) {
-            Socket clientSocket = serverSocket.accept();
-            handle_node_connections(clientSocket);
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                handle_node_connections(clientSocket);
+            }
+        } catch (IOException e) {
+            System.err.println("Tracker failed to start or accept connections: " + e.getMessage());
+            e.printStackTrace();
         }
-    } catch (IOException e) {
-        System.err.println("Tracker failed to start or accept connections: " + e.getMessage());
-        e.printStackTrace();
-    }
     }
 }
