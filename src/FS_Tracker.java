@@ -1,15 +1,18 @@
 import java.util.*;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.net.*;
 
 public class FS_Tracker {
     private String ip_address = "10.0.1.10";
     private int tcp_port = 42069;
+    private int connected_nodes;
     private Map<String, List<String>> nodes;  // ip do nodo e lista com o nome dos ficheiros do nodo
 
     // Constructors
 
     public FS_Tracker() {
+        this.connected_nodes = 0;
         this.nodes = new HashMap<String, List<String>>();
     }
 
@@ -21,6 +24,10 @@ public class FS_Tracker {
 
     public int get_tracker_tcp_port() {
         return this.tcp_port;
+    }
+
+    public int get_connected_nodes() {
+        return this.connected_nodes;
     }
 
     public Map<String, List<String>> get_tracker_nodes() {
@@ -39,14 +46,6 @@ public class FS_Tracker {
 
     // Methods
 
-    public void register_node() {
-        
-    }
-    
-    public void delete_node() {
-
-    }
-
     public String search_file(String file_name) {
         String file_node = null;
 
@@ -61,25 +60,62 @@ public class FS_Tracker {
         return file_node;
     }
 
-    private static void handle_node_connections(Socket client_socket) {
-        InetAddress nodeAddress = client_socket.getInetAddress();
-        String nodeIp = nodeAddress.getHostAddress();
+    public void print_connected_nodes() {
+        System.out.println("Connected nodes:");
+        for (Map.Entry<String, List<String>> entry : get_tracker_nodes().entrySet()) {
+            System.out.println(entry.getKey());
+        }
+        System.out.println("\n");
+    }
 
-        System.out.println("Concectado " + nodeIp);
+    public void delete_node(String node_ip_address) {
+        this.nodes.remove(node_ip_address);
+    }
+
+    public void register_node(String node_ip_address) {
+        List node_files = new ArrayList<String>();
+        this.nodes.put(node_ip_address, node_files);
+    }
+
+    public void handle_node_connections(Socket node_socket) {
+        InetAddress node_address = node_socket.getInetAddress();
+        String node_ip_address = node_address.getHostAddress();
+
+        register_node(node_ip_address);
+
+        System.out.println("\u001B[32mNode connected\u001B[0m\n" + "Node IP address: " + node_ip_address + "\n");
+
+        new Thread(() -> {
+            try (ObjectOutputStream out = new ObjectOutputStream(node_socket.getOutputStream())) {
+
+                out.writeObject(node_ip_address);  // Tracker diz ao node qual é o IP dele
+
+                while (!node_socket.isClosed()) {
+
+                }
+  
+            } catch (Exception e) {
+                System.err.println("Details: " + e.getMessage() + "\n");
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     public static void main(String[] args) {
         FS_Tracker tracker = new FS_Tracker();
 
-        try (ServerSocket serverSocket = new ServerSocket(tracker.get_tracker_tcp_port())) {
+        try (ServerSocket tracker_socket = new ServerSocket(tracker.get_tracker_tcp_port())) {
             System.out.println("\u001B[32mTracker is waiting for connections...\u001B[0m\n");
 
             while (true) {
-                Socket clientSocket = serverSocket.accept();
-                handle_node_connections(clientSocket);
+                Socket node_socket = tracker_socket.accept();
+                tracker.handle_node_connections(node_socket);
+
             }
+
         } catch (IOException e) {
-            System.err.println("Tracker failed to start or accept connections: " + e.getMessage());
+            System.err.println("\u001B[31mTracker failed to start connections:\u001B[0m\n");
+            System.out.println("Details: " + e.getMessage() + "\n");
             e.printStackTrace();
         }
     }

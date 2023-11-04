@@ -65,14 +65,7 @@ public class FS_Node {
 
     public void add_file(File file, String folder_name) {
         this.shared_files.get(folder_name).add(file);
-    }
-
-    @Override
-    public String toString() {
-        return "IP Address: " + this.ip_adress + 
-               "TCP Port:" + this.tcp_port + 
-               "UDP Port:" + this.udp_port;
-    }    
+    }  
     
     public static void main(String[] args) {
         String tracker_ip_address = "10.0.1.10";
@@ -81,10 +74,17 @@ public class FS_Node {
         FS_Node node = new FS_Node();
 
         try (Socket socket = new Socket(tracker_ip_address, tracker_tcp_port)) {
+            System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
             ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
 
-            System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
+            String node_ip_address = (String) in.readObject();
+            node.set_node_ip_adress(node_ip_address);
+            System.out.println("Received IP address from tracker: " + node_ip_address);
+
+            while (!socket.isClosed()) {
+                
+            }
 
         } catch (Exception e) {
             System.out.println("\u001B[31mNode failed to connect to tracker\u001B[0m\n");
