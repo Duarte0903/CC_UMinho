@@ -3,8 +3,8 @@ import java.io.*;
 import java.net.*;
 
 public class FS_Tracker {
-    private String ip_address = "10.0.1.10";
-    private int tcp_port = 42069;
+    private static String ip_address = "10.0.1.10";
+    private static int tcp_port = 42069;
     private int connected_nodes;
     private Map<String, List<String>> nodes;  // ip do nodo e lista com o nome dos ficheiros do nodo
 
@@ -89,7 +89,7 @@ public class FS_Tracker {
 
         register_node(node_ip_address);
 
-        System.out.println("\u001B[32mNode connected\u001B[0m\n" + "Node IP address: " + node_ip_address + "\n");
+        System.out.println("\u001B[32mNode connected\u001B[32m" + "Node IP address: " + node_ip_address + "\n");
 
         new Thread(() -> {
             try (ObjectOutputStream out = new ObjectOutputStream(node_socket.getOutputStream())) {
@@ -111,7 +111,8 @@ public class FS_Tracker {
         FS_Tracker tracker = new FS_Tracker();
 
         try (ServerSocket tracker_socket = new ServerSocket(tracker.get_tracker_tcp_port())) {
-            System.out.println("\u001B[32mTracker is waiting for connections...\u001B[0m\n");
+            System.out.println("\u001B[32mServidor ativo em " +  ip_address + " porta " +  tcp_port +" \u001B[32m\n");
+
 
             Thread connections_thread = new Thread(() -> {
                 while (true) {

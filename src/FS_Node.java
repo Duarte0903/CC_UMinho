@@ -52,9 +52,6 @@ public class FS_Node {
 
     // Methods
 
-    public void connect_to_tracker(String tracker_ip_address, int tracker_tcp_port) {
-    }
-
     public void connect_to_node() {
 
     }
