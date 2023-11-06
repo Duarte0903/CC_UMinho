@@ -1,6 +1,5 @@
 import java.util.*;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.*;
 
 public class FS_Tracker {
@@ -62,10 +61,17 @@ public class FS_Tracker {
 
     public void print_connected_nodes() {
         System.out.println("Connected nodes:");
-        for (Map.Entry<String, List<String>> entry : get_tracker_nodes().entrySet()) {
-            System.out.println(entry.getKey());
+
+        if (get_tracker_nodes().entrySet().isEmpty()) {
+            System.out.println("Zero connected nodes\n");
         }
-        System.out.println("\n");
+
+        else {
+            for (Map.Entry<String, List<String>> entry : get_tracker_nodes().entrySet()) {
+                System.out.println(entry.getKey());
+            }
+            System.out.println("\n");
+        }
     }
 
     public void delete_node(String node_ip_address) {
@@ -107,10 +113,40 @@ public class FS_Tracker {
         try (ServerSocket tracker_socket = new ServerSocket(tracker.get_tracker_tcp_port())) {
             System.out.println("\u001B[32mTracker is waiting for connections...\u001B[0m\n");
 
-            while (true) {
-                Socket node_socket = tracker_socket.accept();
-                tracker.handle_node_connections(node_socket);
+            Thread connections_thread = new Thread(() -> {
+                while (true) {
+                    try {
+                        Socket node_socket = tracker_socket.accept();
+                        tracker.handle_node_connections(node_socket);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
 
+            connections_thread.start();
+
+            while (true) {    
+                BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+                String input = reader.readLine();
+
+                String[] command_parts = input.split(" ");
+                String command_name = command_parts[0];
+                List<String> commandArguments = Arrays.asList(Arrays.copyOfRange(command_parts, 1, command_parts.length));
+
+                if ("connections".equals(command_name)) {
+                    tracker.print_connected_nodes();
+                } 
+
+                else if ("exit".equals(command_name)) {
+                    tracker_socket.close();
+                    System.out.println("Tracker is exiting.");
+                    System.exit(0);
+                }
+
+                else {
+                    System.out.println("Unknown command: " + input);
+                }
             }
 
         } catch (IOException e) {

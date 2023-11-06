@@ -82,7 +82,7 @@ public class FS_Node {
             node.set_node_ip_adress(node_ip_address);
             System.out.println("Received IP address from tracker: " + node_ip_address);
 
-            while (!socket.isClosed()) {
+            while (true) {
                 
             }
 
