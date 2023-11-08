@@ -6,13 +6,37 @@ public class FS_Node {
     private String ip_adress;
     private int tcp_port;
     private int udp_port;
-    private Map<String, Set<File>> shared_files;   // A String corresponde ao nome do arquivo e o Set a pastas de ficheiros  
+    
+    // Dados tracker
+    private Map<String,List<String>> dataTracker;
 
+    // Dados locais
+    private List<String> dataLocal;
+    
     // Constructors
 
-    public FS_Node() {
-        this.shared_files = new HashMap<String, Set<File>>();
+    public FS_Node(String path) {
+        this.ip_adress = null;
+        this.tcp_port = 0;
+        this.udp_port = 0;
+        this.dataTracker = new HashMap<>();
+        this.dataLocal = new ArrayList<>();
+    
+        // Access the files in the specified directory
+        File folder = new File(path);
+
+        if (folder.exists() && folder.isDirectory()) {
+            File[] files = folder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isFile()) {
+                        this.dataLocal.add(file.getName());
+                    }
+                }
+            }
+        }
     }
+    
 
     // Getters
 
@@ -28,8 +52,8 @@ public class FS_Node {
         return this.udp_port;
     }
 
-    public Map<String, Set<File>> get_shared_files() {
-        return this.shared_files;
+    public List<String> get_shared_files() {
+        return this.dataLocal;
     }
 
     // Setters
@@ -68,12 +92,16 @@ public class FS_Node {
         String tracker_ip_address = "10.0.1.10";
         int tracker_tcp_port = 42069;
 
-        FS_Node node = new FS_Node();
+        FS_Node node = new FS_Node(args[0]);
 
         try (Socket socket = new Socket(tracker_ip_address, tracker_tcp_port)) {
+             
             System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
+            
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
             ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+
+            out.writeObject(node.get_shared_files());
 
             String node_ip_address = (String) in.readObject();
             node.set_node_ip_adress(node_ip_address);

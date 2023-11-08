@@ -83,72 +83,63 @@ public class FS_Tracker {
         this.nodes.put(node_ip_address, node_files);
     }
 
-    public void handle_node_connections(Socket node_socket) {
-        InetAddress node_address = node_socket.getInetAddress();
-        String node_ip_address = node_address.getHostAddress();
-
-        register_node(node_ip_address);
-
-        System.out.println("\u001B[32mNode connected\u001B[32m" + "Node IP address: " + node_ip_address + "\n");
-
-        new Thread(() -> {
-            try (ObjectOutputStream out = new ObjectOutputStream(node_socket.getOutputStream())) {
-
-                out.writeObject(node_ip_address);  // Tracker diz ao node qual é o IP dele
-
-                while (!node_socket.isClosed()) {
-
-                }
-  
-            } catch (Exception e) {
-                System.err.println("Details: " + e.getMessage() + "\n");
-                e.printStackTrace();
-            }
-        }).start();
-    }
 
     public static void main(String[] args) {
         FS_Tracker tracker = new FS_Tracker();
 
-        try (ServerSocket tracker_socket = new ServerSocket(tracker.get_tracker_tcp_port())) {
+        try {
+            
+            ServerSocket server = new ServerSocket(tracker.get_tracker_tcp_port());
             System.out.println("\u001B[32mServidor ativo em " +  ip_address + " porta " +  tcp_port +" \u001B[32m\n");
 
+            
+            Thread commandsTracker = new Thread ( () -> {
 
-            Thread connections_thread = new Thread(() -> {
-                while (true) {
+                while (true) { 
+                       
                     try {
-                        Socket node_socket = tracker_socket.accept();
-                        tracker.handle_node_connections(node_socket);
-                    } catch (IOException e) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+                        String input = reader.readLine();
+                    
+                        String[] command_parts = input.split(" ");
+                        String command_name = command_parts[0];
+                        List<String> commandArguments = Arrays.asList(Arrays.copyOfRange(command_parts, 1, command_parts.length));
+        
+                        switch (command_name) {
+                            case "connections":
+                                tracker.print_connected_nodes();
+                                break;
+                        
+                            case "exit":
+                                server.close();
+                                System.out.println("Tracker is exiting.");
+                                System.exit(0);
+                                break;
+                        
+                            default:
+                                System.out.println("Unknown command: " + input);
+                                break;
+                        }
+                    
+                    } catch(Exception e){
                         e.printStackTrace();
                     }
-                }
-            });
-
-            connections_thread.start();
-
-            while (true) {    
-                BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-                String input = reader.readLine();
-
-                String[] command_parts = input.split(" ");
-                String command_name = command_parts[0];
-                List<String> commandArguments = Arrays.asList(Arrays.copyOfRange(command_parts, 1, command_parts.length));
-
-                if ("connections".equals(command_name)) {
-                    tracker.print_connected_nodes();
                 } 
+              }
+            );
+                
 
-                else if ("exit".equals(command_name)) {
-                    tracker_socket.close();
-                    System.out.println("Tracker is exiting.");
-                    System.exit(0);
-                }
-
-                else {
-                    System.out.println("Unknown command: " + input);
+            while (true) {
+                try {
+                    Socket node_socket = server.accept();
+                    Thread t = new Thread(new ConnectionsHandlerTracker(node_socket,tracker));
+                    t.start();
+                
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             }
+            
 
         } catch (IOException e) {
             System.err.println("\u001B[31mTracker failed to start connections:\u001B[0m\n");
