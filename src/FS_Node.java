@@ -87,6 +87,11 @@ public class FS_Node {
     public void add_file(String file, String folder_name) {
         this.dataTracker.get(folder_name).add(file);
     }  
+
+/*
+    public void print_files(String file){
+
+    }*/
     
     public static void main(String[] args) {
         String tracker_ip_address = "10.0.1.10";
@@ -94,7 +99,8 @@ public class FS_Node {
 
         // Cria a instancia Node
         FS_Node node = new FS_Node(args[0]);
-
+        
+        
         // Estabelece a conecxao com o Servidor
         try (Socket socket = new Socket(tracker_ip_address, tracker_tcp_port)) {
              
@@ -112,6 +118,43 @@ public class FS_Node {
             // Notifica o servidor dos ficheiros que tem armazenados
             out.writeObject(node.get_shared_files());
 
+             Thread commandsNode = new Thread ( () -> {
+
+                while (true) { 
+                       
+                    try {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+                        String input = reader.readLine();
+                    
+                        String[] command_parts = input.split(" ");
+                        String command_name = command_parts[0];
+                        List<String> commandArguments = Arrays.asList(Arrays.copyOfRange(command_parts, 1, command_parts.length));
+        
+                        switch (command_name) {
+                            /*case "listfiles":
+                                node.print_files();
+                                break;*/
+                        
+                            case "exit":
+                                socket.close();
+                                System.out.println("Node is exiting.");
+                                System.exit(0);
+                                break;
+                        
+                            default:
+                                System.out.println("Unknown command: " + input);
+                                break;
+                        }
+                    
+                    } catch(Exception e){
+                        e.printStackTrace();
+                    }
+                } 
+              }
+            );
+
+            commandsNode.start();
+
             // Aceita conexoes UDP de outros Nodos
             while (true) {
                 
@@ -123,4 +166,6 @@ public class FS_Node {
             e.printStackTrace();
         }
     }
+
+
 }

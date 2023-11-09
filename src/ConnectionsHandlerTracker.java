@@ -42,6 +42,7 @@ public class ConnectionsHandlerTracker implements Runnable {
             List<String> dataNode = (List<String>) in.readObject();
             this.trackerData.registerNodeData(node_ip_address,dataNode);
             System.out.println("Informacao dos ficheiros do node com ip:" +node_ip_address+ "adicionada. \n");
+            System.out.println ("pastas do Node" + dataNode);
 
             while (!this.socket.isClosed()) {
     

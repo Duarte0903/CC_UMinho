@@ -92,7 +92,7 @@ public class FS_Tracker {
         try {
             
             ServerSocket server = new ServerSocket(tracker.get_tracker_tcp_port());
-            System.out.println("\u001B[32mServidor ativo em " +  ip_address + " porta " +  tcp_port +" \u001B[32m\n");
+            System.out.println("\u001B[32mServidor ativo em " +  ip_address + " porta " +  tcp_port +" \u001B[0m \n");
 
             
             Thread commandsTracker = new Thread ( () -> {
@@ -129,6 +129,8 @@ public class FS_Tracker {
                 } 
               }
             );
+
+            commandsTracker.start();
                 
 
             while (true) {
