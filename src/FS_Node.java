@@ -70,8 +70,8 @@ public class FS_Node {
         this.udp_port = udp_port;
     }
 
-    public void set_shared_files(Map<String, Set<File>> shared_files) {
-        this.shared_files = shared_files;
+    public void set_shared_files(Map<String, List<String>> dataTracker) {
+        this.dataTracker = dataTracker;
     }
 
     // Methods
@@ -84,29 +84,35 @@ public class FS_Node {
 
     }
 
-    public void add_file(File file, String folder_name) {
-        this.shared_files.get(folder_name).add(file);
+    public void add_file(String file, String folder_name) {
+        this.dataTracker.get(folder_name).add(file);
     }  
     
     public static void main(String[] args) {
         String tracker_ip_address = "10.0.1.10";
         int tracker_tcp_port = 42069;
 
+        // Cria a instancia Node
         FS_Node node = new FS_Node(args[0]);
 
+        // Estabelece a conecxao com o Servidor
         try (Socket socket = new Socket(tracker_ip_address, tracker_tcp_port)) {
              
             System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
             
+            // Cria os pipes de escrita e leitura
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
             ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
 
-            out.writeObject(node.get_shared_files());
-
+            // Recebe o seu endereco de ip
             String node_ip_address = (String) in.readObject();
             node.set_node_ip_adress(node_ip_address);
             System.out.println("Received IP address from tracker: " + node_ip_address);
 
+            // Notifica o servidor dos ficheiros que tem armazenados
+            out.writeObject(node.get_shared_files());
+
+            // Aceita conexoes UDP de outros Nodos
             while (true) {
                 
             }

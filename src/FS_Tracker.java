@@ -76,10 +76,12 @@ public class FS_Tracker {
 
     public void delete_node(String node_ip_address) {
         this.nodes.remove(node_ip_address);
+        this.connected_nodes--;
     }
 
-    public void register_node(String node_ip_address) {
-        List node_files = new ArrayList<String>();
+    public void registerNodeData(String node_ip_address, List<String> files) {
+        List<String> node_files = new ArrayList<String>();
+        node_files = files;
         this.nodes.put(node_ip_address, node_files);
     }
 
