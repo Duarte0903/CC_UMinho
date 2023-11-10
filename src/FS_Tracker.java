@@ -111,7 +111,7 @@ public class FS_Tracker {
                         
                             case "exit":
                                 serverSocket.close();
-                                System.out.println("Tracker is exiting.");
+                                System.out.println("Tracker is exiting...");
                                 System.exit(0);
                                 break;
                         

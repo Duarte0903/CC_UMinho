@@ -89,6 +89,7 @@ public class FS_Node {
     public static List<String> getFileLocations(String command,String file, ObjectOutputStream output, ObjectInputStream input) throws IOException, ClassNotFoundException {
         // Notifies the server
         String string = command + " " + file;
+        System.out.println(string);
         output.writeObject(string);
 
         // Gets the locations of the files from the server
@@ -145,6 +146,7 @@ public class FS_Node {
                                 break;
                         
                             case "exit":
+                                output.writeObject(commandName);
                                 serverSocket.close();
                                 System.out.println("Node is exiting.");
                                 System.exit(0);
