@@ -3,24 +3,23 @@ import java.io.*;
 import java.net.*;
 
 public class FS_Node {
-    private String ip_adress;
-    private int tcp_port;
-    private int udp_port;
+    private static String ip;
+    private static int port;
     
     // Dados tracker
-    private Map<String,List<String>> dataTracker;
+    // private Map<String,List<String>> serverData;
 
     // Dados locais
-    private List<String> dataLocal;
+    private List<String> localData;
     
     // Constructors
 
     public FS_Node(String path) {
-        this.ip_adress = null;
-        this.tcp_port = 0;
-        this.udp_port = 0;
-        this.dataTracker = new HashMap<>();
-        this.dataLocal = new ArrayList<>();
+        FS_Node.ip = null;
+        FS_Node.port = 0;
+        
+        //this.serverData = new HashMap<>();
+        this.localData = new ArrayList<>();
     
         // Access the files in the specified directory
         File folder = new File(path);
@@ -30,7 +29,7 @@ public class FS_Node {
             if (files != null) {
                 for (File file : files) {
                     if (file.isFile()) {
-                        this.dataLocal.add(file.getName());
+                        this.localData.add(file.getName());
                     }
                 }
             }
@@ -40,103 +39,113 @@ public class FS_Node {
 
     // Getters
 
-    public String get_node_ip_adress() {
-        return this.ip_adress;
+    public String getIp() {
+        return FS_Node.ip;
     }
 
-    public int get_node_tcp_port() {
-        return this.tcp_port;
+    public int getPort() {
+        return FS_Node.port;
     }
 
-    public int get_node_udp_port() {
-        return this.udp_port;
+    public List<String> getLocalData() {
+        return this.localData;
     }
 
-    public List<String> get_shared_files() {
-        return this.dataLocal;
-    }
+    //public Map<String, List<String>> getServerData() {
+    //    return serverData;
+    //}
 
     // Setters
 
-    public void set_node_ip_adress(String ip_adress) {
-        this.ip_adress = ip_adress;
+    public static void setIp(String ip) {
+        FS_Node.ip = ip;
     }
 
-    public void set_node_tcp_port(int tcp_port) {
-        this.tcp_port = tcp_port;
+    public static void setPort(int port) {
+        FS_Node.port = port;
     }
 
-    public void set_node_udp_port(int udp_port) {
-        this.udp_port = udp_port;
+    public void setLocalData(List<String> localData) {
+        this.localData = localData;
     }
 
-    public void set_shared_files(Map<String, List<String>> dataTracker) {
-        this.dataTracker = dataTracker;
-    }
+    //public void setServerData(Map<String, List<String>> serverData) {
+     //   this.serverData = serverData;
+    //}
 
     // Methods
 
-    public void connect_to_node() {
-
+    public void printFileNames() {
+        if (this.localData.isEmpty()) {
+            System.out.println("\nNo files in node database.\n");
+        } else {
+            System.out.println("\nFile names in node database: \n\n");
+            for (String fileName : localData) {
+                System.out.println("    " + fileName + "\n");
+            }
+        }
     }
 
-    public void end_connection_with_tracker() {
+    public static List<String> getFileLocations(String command,String file, ObjectOutputStream output, ObjectInputStream input) throws IOException, ClassNotFoundException {
+        // Notifies the server
+        String string = command + " " + file;
+        output.writeObject(string);
 
-    }
-
-    public void add_file(String file, String folder_name) {
-        this.dataTracker.get(folder_name).add(file);
-    }  
-
-/*
-    public void print_files(String file){
-
-    }*/
+        // Gets the locations of the files from the server
+        List<String> fileLocations = (List<String>) input.readObject();
     
+        return fileLocations;
+    }
+
+    // Main function
     public static void main(String[] args) {
-        String tracker_ip_address = "10.0.1.10";
-        int tracker_tcp_port = 42069;
+        String serverIp = "10.0.1.10";
+        int serverPort = 42069;
 
         // Cria a instancia Node
-        FS_Node node = new FS_Node(args[0]);
-        
-        
+        FS_Node nodeData = new FS_Node(args[0]);
+    
         // Estabelece a conecxao com o Servidor
-        try (Socket socket = new Socket(tracker_ip_address, tracker_tcp_port)) {
+        try (Socket serverSocket = new Socket(serverIp, serverPort)) {
              
-            System.out.println("\u001B[32mNode connected to tracker\u001B[0m\n");
+            System.out.println("\u001B[32m Node connected to tracker. \u001B[0m\n");
             
             // Cria os pipes de escrita e leitura
-            ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-            ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+            ObjectOutputStream output = new ObjectOutputStream(serverSocket.getOutputStream());
+            ObjectInputStream input = new ObjectInputStream(serverSocket.getInputStream());
 
             // Recebe o seu endereco de ip
-            String node_ip_address = (String) in.readObject();
-            node.set_node_ip_adress(node_ip_address);
-            System.out.println("Received IP address from tracker: " + node_ip_address);
+            String nodeIp = (String) input.readObject();
+            FS_Node.setIp(nodeIp);
+            System.out.println("Received IP address from tracker: " + nodeIp);
 
             // Notifica o servidor dos ficheiros que tem armazenados
-            out.writeObject(node.get_shared_files());
+            output.writeObject(nodeData.getLocalData());
 
-             Thread commandsNode = new Thread ( () -> {
+            Thread terminalNode = new Thread ( () -> {
 
                 while (true) { 
                        
                     try {
                         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-                        String input = reader.readLine();
+                        String inp = reader.readLine();
                     
-                        String[] command_parts = input.split(" ");
-                        String command_name = command_parts[0];
-                        List<String> commandArguments = Arrays.asList(Arrays.copyOfRange(command_parts, 1, command_parts.length));
-        
-                        switch (command_name) {
-                            /*case "listfiles":
-                                node.print_files();
-                                break;*/
+                        String[] commandParts = inp.split(" ");
+                        String commandName = commandParts[0];
+                        List<String> commandArguments = Arrays.asList(Arrays.copyOfRange(commandParts, 1, commandParts.length));
+                        
+                        switch (commandName) {
+                            case "get":
+                                // Gets the locations of the file
+                                List<String> fileLocations = getFileLocations(commandName,commandArguments.get(0), output, input);
+
+                                System.out.println(fileLocations);
+
+                                //Calls a method that creates threads to download the file from various nodes
+                                break;
                         
                             case "exit":
-                                socket.close();
+                                serverSocket.close();
                                 System.out.println("Node is exiting.");
                                 System.exit(0);
                                 break;
@@ -152,20 +161,20 @@ public class FS_Node {
                 } 
               }
             );
+            terminalNode.start();
 
-            commandsNode.start();
+            while(true){
 
-            // Aceita conexoes UDP de outros Nodos
-            while (true) {
-                
             }
+            // Aceita conexoes UDP de outros Nodos
+            // ...In construction...
 
         } catch (Exception e) {
-            System.out.println("\u001B[31mNode failed to connect to tracker\u001B[0m\n");
+            System.out.println("\u001B[31m Node failed to connect to tracker. \u001B[0m\n");
             System.err.println("Details: " + e.getMessage() + "\n");
             e.printStackTrace();
         }
     }
 
-
 }
+
