@@ -3,12 +3,8 @@ import java.io.*;
 import java.net.*;
 
 public class FS_Tracker {
-    
-    // Server network data
     private static String ip = "10.0.1.10";
     private static int port = 42069;
-
-    // Node derived data
     private int numConnectedNodes;
     private Map<String, List<String>> nodesFiles;   // Key: Node Ip
                                                     // Value : Node files 
@@ -70,25 +66,24 @@ public class FS_Tracker {
     }
 
     public List<String> getFileLocations(String fileName) {
-        List<String> nodeIps = new ArrayList<String> ();
-
+        List<String> nodeIps = new ArrayList<>();
+    
         for (Map.Entry<String, List<String>> entry : this.nodesFiles.entrySet()) {
-            String key = entry.getKey();
-            List<String> nodeFiles = entry.getValue();
-
-            if (nodeFiles.contains(fileName)) {
-                nodeIps.add(key);
+            String nodeIp = entry.getKey();
+            List<String> files = entry.getValue();
+    
+            if (files.contains(fileName)) {
+                nodeIps.add(nodeIp);
+                break; // Break after finding the first node with the file (assuming uniqueness)
             }
         }
         return nodeIps;
-
-    }
+    }    
 
     public static void main(String[] args) {
         FS_Tracker serverData = new FS_Tracker();
 
-        try {
-            
+        try {         
             ServerSocket serverSocket = new ServerSocket(serverData.getPort());
             System.out.println("\u001B[32m Servidor ativo com ip " +  serverData.getIp() + " e com porta " +  serverData.getPort() +" \u001B[0m \n");
 

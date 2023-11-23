@@ -8,7 +8,7 @@ public class ConnectionsHandlerTracker implements Runnable {
     private FS_Tracker localData;
     
 
-    ConnectionsHandlerTracker (Socket nodeSocket, FS_Tracker localData){
+    ConnectionsHandlerTracker(Socket nodeSocket, FS_Tracker localData) {
         ConnectionsHandlerTracker.nodeSocket = nodeSocket;
         this.localData = localData;
     }
@@ -32,7 +32,6 @@ public class ConnectionsHandlerTracker implements Runnable {
         System.out.println("\u001B[32mNode connected with server\u001B[0m\n" + "Node IP address: " + nodeIp + "\n");
 
         try {
-            
             // Abertura dos estremos de escrita e leitura
             ObjectOutputStream out = new ObjectOutputStream(getNodeSocket().getOutputStream());
             ObjectInputStream in = new ObjectInputStream(getNodeSocket().getInputStream());
@@ -45,9 +44,7 @@ public class ConnectionsHandlerTracker implements Runnable {
             this.localData.insertNewNode(nodeIp,filesNode);
             System.out.println("Informacao dos ficheiros do node com ip:" + nodeIp + " adicionada. \n");
             
-            // Test
-            System.out.println ("files do Node" + filesNode);
-
+            System.out.println ("files do Node" + filesNode + "\n"); // Test
             
             while (!getNodeSocket().isClosed()) {
                 try {
@@ -63,14 +60,10 @@ public class ConnectionsHandlerTracker implements Runnable {
                         List<String> commandArguments = new ArrayList<>(Arrays.asList(Arrays.copyOfRange(commandParts, 1, commandParts.length)));
 
                         switch (commandName) {
-                            // Sends nodes that contain the file
                             case "get":
-                                // Gets the locations of the file
-                                ArrayList<String> fileLocations = (ArrayList<String>) localData.getFileLocations(commandArguments.get(0));
-
-                                // Sends the node the locations of the file
-                                out.writeObject(fileLocations);
-
+                                String requested_file = commandArguments.get(0);
+                                List<String> file_locations = localData.getFileLocations(requested_file);
+                                out.writeObject(file_locations);
                                 break;
 
                             case "insert":
@@ -101,6 +94,4 @@ public class ConnectionsHandlerTracker implements Runnable {
                 e.printStackTrace();
         }
     }
-
 }
-
