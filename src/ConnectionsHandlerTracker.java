@@ -5,10 +5,10 @@ import java.net.*;
 public class ConnectionsHandlerTracker implements Runnable {
     
     private static Socket nodeSocket;
-    private FS_Tracker localData;
+    private TrackerData localData;
     
 
-    ConnectionsHandlerTracker (Socket nodeSocket, FS_Tracker localData){
+    ConnectionsHandlerTracker (Socket nodeSocket, TrackerData localData){
         ConnectionsHandlerTracker.nodeSocket = nodeSocket;
         this.localData = localData;
     }
@@ -17,7 +17,7 @@ public class ConnectionsHandlerTracker implements Runnable {
         return ConnectionsHandlerTracker.nodeSocket;
     }
 
-    public FS_Tracker getLocalData() {
+    public TrackerData getLocalData() {
         return localData;
     }
 
@@ -29,7 +29,7 @@ public class ConnectionsHandlerTracker implements Runnable {
 
         this.localData.insertNewNode(nodeIp,null);
 
-        System.out.println("\u001B[32mNode connected with server\u001B[0m\n" + "Node IP address: " + nodeIp + "\n");
+        System.out.println("\u001B[32m Node connected with server \u001B[0m\n" + "Node IP address: " + nodeIp + "\n");
 
         try {
             
@@ -43,11 +43,6 @@ public class ConnectionsHandlerTracker implements Runnable {
             // Recebe informacao e insere
             List<String> filesNode = new ArrayList<String>((List<String>) in.readObject());
             this.localData.insertNewNode(nodeIp,filesNode);
-            System.out.println("Informacao dos ficheiros do node com ip:" + nodeIp + " adicionada. \n");
-            
-            // Test
-            System.out.println ("files do Node" + filesNode);
-
             
             while (!getNodeSocket().isClosed()) {
                 try {
@@ -80,6 +75,7 @@ public class ConnectionsHandlerTracker implements Runnable {
                             case "exit":
                                 // Closes socket
                                 getNodeSocket().close();
+
                                 break;
 
                             default:

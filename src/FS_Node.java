@@ -4,21 +4,18 @@ import java.net.*;
 
 public class FS_Node {
     private static String ip;
-    private static int port;
-    
-    // Dados tracker
-    // private Map<String,List<String>> serverData;
+    private static int TCPport;
+    private static int UDPport;
 
-    // Dados locais
+    // Ficheiros locais
     private List<String> localData;
     
     // Constructors
 
     public FS_Node(String path) {
         FS_Node.ip = null;
-        FS_Node.port = 0;
-        
-        //this.serverData = new HashMap<>();
+        FS_Node.TCPport = 42069;
+        FS_Node.UDPport = 69696;
         this.localData = new ArrayList<>();
     
         // Access the files in the specified directory
@@ -36,24 +33,23 @@ public class FS_Node {
         }
     }
     
-
     // Getters
 
-    public String getIp() {
-        return FS_Node.ip;
+    public static String getIp() {
+        return ip;
     }
 
-    public int getPort() {
-        return FS_Node.port;
+    public static int getTCPport() {
+        return TCPport;
+    }
+
+    public static int getUDPport() {
+        return UDPport;
     }
 
     public List<String> getLocalData() {
         return this.localData;
     }
-
-    //public Map<String, List<String>> getServerData() {
-    //    return serverData;
-    //}
 
     // Setters
 
@@ -61,17 +57,9 @@ public class FS_Node {
         FS_Node.ip = ip;
     }
 
-    public static void setPort(int port) {
-        FS_Node.port = port;
-    }
-
     public void setLocalData(List<String> localData) {
         this.localData = localData;
     }
-
-    //public void setServerData(Map<String, List<String>> serverData) {
-     //   this.serverData = serverData;
-    //}
 
     // Methods
 
@@ -89,13 +77,27 @@ public class FS_Node {
     public static List<String> getFileLocations(String command,String file, ObjectOutputStream output, ObjectInputStream input) throws IOException, ClassNotFoundException {
         // Notifies the server
         String string = command + " " + file;
-        System.out.println(string);
+
         output.writeObject(string);
 
         // Gets the locations of the files from the server
         List<String> fileLocations = (List<String>) input.readObject();
     
         return fileLocations;
+    }
+
+    private static void receiveUdpPackets(int UDPport) throws IOException {
+        DatagramSocket socket = new DatagramSocket(UDPport);
+
+        byte[] receiveData = new byte[1024];
+        DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+
+        socket.receive(receivePacket);
+        String receivedMessage = new String(receivePacket.getData(), 0, receivePacket.getLength());
+
+        System.out.println("Received UDP message: " + receivedMessage);
+
+        socket.close();
     }
 
     // Main function
@@ -165,12 +167,14 @@ public class FS_Node {
             );
             terminalNode.start();
 
-            while(true){
-
+            try { 
+                while(true){
+                    receiveUdpPackets(getUDPport());
+                }
+            } catch (Exception e){
+               System.out.println("Could not receive UDP packets!");
             }
-            // Aceita conexoes UDP de outros Nodos
-            // ...In construction...
-
+            
         } catch (Exception e) {
             System.out.println("\u001B[31m Node failed to connect to tracker. \u001B[0m\n");
             System.err.println("Details: " + e.getMessage() + "\n");
