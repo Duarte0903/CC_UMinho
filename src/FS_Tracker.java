@@ -9,11 +9,13 @@ public class FS_Tracker {
     private Map<String, List<String>> nodesFiles;   // Key: Node Ip
                                                     // Value : Node files 
     
+    private Reentrantlock lock;
     // Constructors
 
     public FS_Tracker() {
         this.numConnectedNodes = 0;
         this.nodesFiles = new HashMap <String,List<String>> ();
+        this.lock = new Reentrantlock;
     }
 
     // Getters
@@ -27,11 +29,21 @@ public class FS_Tracker {
     }
 
     public int getNumNodesConnected() {
-        return this.numConnectedNodes;
+        lock.lock();
+        try{
+            return this.numConnectedNodes;
+        } finally{
+            lock.unlock();
+        }
     }
 
     public Map<String, List<String>> getNodesFiles() {
-        return this.nodesFiles;
+      lock.lock();
+        try{
+            return this.nodesFiles;
+        } finally{
+            lock.unlock();
+        }
     }
 
     // Methods
@@ -52,30 +64,50 @@ public class FS_Tracker {
     }
 
     public void removeNodeData(String nodeIp) {
-        this.nodesFiles.remove(nodeIp);
-        this.numConnectedNodes--;
+        lock.lock();
+        try{
+            this.nodesFiles.remove(nodeIp);
+            this.numConnectedNodes--;
+        } finally{
+            lock.unlock();
+        }
     }
 
     public void insertNewNode(String nodeIp, List<String> files) {
-        this.nodesFiles.put(nodeIp, files);
-        this.numConnectedNodes++;
+        lock.lock();
+        try{
+            this.nodesFiles.put(nodeIp, files);
+            this.numConnectedNodes++;
+        } finally{
+            lock.unlock();
+        }
     }
 
     public void insertNodeData(String nodeIp, String file) {
-        this.nodesFiles.get(nodeIp).add(file);
+        lock.lock();
+        try{
+            this.nodesFiles.get(nodeIp).add(file);
+        } finally{
+            lock.unlock();
+        }
     }
 
     public List<String> getFileLocations(String fileName) {
         List<String> nodeIps = new ArrayList<>();
-    
-        for (Map.Entry<String, List<String>> entry : this.nodesFiles.entrySet()) {
-            String nodeIp = entry.getKey();
-            List<String> files = entry.getValue();
-    
-            if (files.contains(fileName)) {
-                nodeIps.add(nodeIp);
-                break; // Break after finding the first node with the file (assuming uniqueness)
+
+        lock.lock();
+        try{
+            for (Map.Entry<String, List<String>> entry : this.nodesFiles.entrySet()) {
+                String nodeIp = entry.getKey();
+                List<String> files = entry.getValue();
+        
+                if (files.contains(fileName)) {
+                    nodeIps.add(nodeIp);
+                    break; // Break after finding the first node with the file (assuming uniqueness)
+                }
             }
+        } finally{
+            lock.unlock();
         }
         return nodeIps;
     }    
