@@ -50,6 +50,10 @@ public class FS_Node {
         return this.localData;
     }
 
+    public String get_files_directory() {
+        return this.files_directory;
+    }
+
     // Setters
 
     public void setIp(String ip) {
@@ -92,24 +96,60 @@ public class FS_Node {
             DatagramSocket udpSocket = new DatagramSocket(get_node_udp_port());
             byte[] receiveData = new byte[1024]; // ajustar o tamanho do buffer
             
-            // Trocar para criar uma thread por pedido recebido
             while (true) {
                 DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 udpSocket.receive(receivePacket);
                 String received_message = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                System.out.println("\u001B[32mReceived UDP request: " + received_message + "\u001B[0m\n");
-    
+                System.out.println("\u001B[32mReceived UDP request: " + "\u001B[0m\n");
+                InetAddress address = receivePacket.getAddress();
+
                 if (received_message.startsWith("FileTransferRequest:")) {
                     String[] parts = received_message.split(":");
-                    String file_name = parts[1];
-                    
-                    Thread file_request_thread = new Thread( () -> {
-                        // Tratar de enviar o ficheiro
-                    });
-                    file_request_thread.start();
+                    String requestedFileName = parts[1];
+                
+                    if (this.getLocalData().contains(requestedFileName)) {
+                        // File exists in the node's directory
+                        Thread file_request_thread = new Thread(() -> {
+                            try (DatagramSocket socket = new DatagramSocket()) {
+                                File fileToSend = new File(this.get_files_directory() + requestedFileName);
+                
+                                // Prepare to send file size as the first packet
+                                long fileSize = fileToSend.length();
+                                byte[] fileSizeBytes = String.valueOf(fileSize).getBytes();
+                                DatagramPacket fileSizePacket = new DatagramPacket(
+                                        fileSizeBytes,
+                                        fileSizeBytes.length,
+                                        address,
+                                        this.get_node_udp_port()
+                                );
+                                socket.send(fileSizePacket);
+                
+                                // Send the file content in subsequent packets
+                                try (FileInputStream fileInputStream = new FileInputStream(fileToSend)) {
+                                    byte[] buffer = new byte[1024];
+                                    int bytesRead;
+                
+                                    while ((bytesRead = fileInputStream.read(buffer)) != -1) {
+                                        DatagramPacket packet = new DatagramPacket(
+                                                buffer,
+                                                bytesRead,
+                                                address,
+                                                this.get_node_udp_port()
+                                        );
+                                        socket.send(packet);
+                                        // Clear the buffer after sending
+                                        buffer = new byte[1024];
+                                    }
+                                }
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        });
+                        file_request_thread.start();
+                    } else {
+                        System.out.println("\u001B[31mRequested file does not exist in the directory.\u001B[0m\\n");
+                    }
                 }
-
-                // fazer outro caso para receber o ficheiro
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -140,64 +180,56 @@ public class FS_Node {
             // Notifica o servidor dos ficheiros que tem armazenados
             output.writeObject(node.getLocalData());
 
-            Thread terminalNode = new Thread ( () -> {
-                while (true) {           
-                    try {
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-                        String inp = reader.readLine();
-                    
-                        String[] command_parts = inp.split(" ");
-                        String command_name = command_parts[0];
-                        List<String> command_arguments = Arrays.asList(Arrays.copyOfRange(command_parts, 1, command_parts.length));
-                        
-                        switch (command_name) {
-                            case "get": 
-                                String file_name = command_arguments.get(0);
-                                output.writeObject("get " + file_name);
-                                List<String> file_locations = (List<String>)input.readObject();  // Endereços IP dos nodos onde está o ficheiro
-
-                                if (file_locations.isEmpty()) {
-                                    System.out.println("\u001B[31mThe requested file is not available in any nodes. \u001B[0m\n");
-                                }
-
-                                else {
-                                    System.out.println("File location: " + file_locations.get(0) + "\n");
-                                    node.request_file_from_node(file_locations.get(0), file_name);
-                                }
-
-                                break;
-
-                            case "printFiles":
-                                node.printFileNames();
-                                break;
-                        
-                            case "exit":
-                                output.writeObject(command_name);
-                                serverSocket.close();
-                                System.out.println("Node is exiting.");
-                                System.exit(0);
-                                break;
-                        
-                            default:
-                                System.out.println("Unknown command: " + input);
-                                break;
-                        }
-                    
-                    } catch(Exception e){
-                        e.printStackTrace();
-                    }
-                } 
-              }
-            );
-            terminalNode.start();
-
             Thread udp_requests_thread = new Thread( () -> {
                 node.handle_udp_requests();
             });
             udp_requests_thread.start();
 
-            while (true) {
-                
+            while (true) {           
+                try {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+                    String inp = reader.readLine();
+                    
+                    String[] command_parts = inp.split(" ");
+                    String command_name = command_parts[0];
+                    List<String> command_arguments = Arrays.asList(Arrays.copyOfRange(command_parts, 1, command_parts.length));
+                        
+                    switch (command_name) {
+                        case "get": 
+                            String file_name = command_arguments.get(0);
+                            output.writeObject("get " + file_name);
+                            List<String> file_locations = (List<String>)input.readObject();  // Endereços IP dos nodos onde está o ficheiro
+
+                            if (file_locations.isEmpty()) {
+                                System.out.println("\u001B[31mThe requested file is not available in any nodes. \u001B[0m\n");
+                            }
+
+                            else {
+                                System.out.println("File location: " + file_locations.get(0) + "\n");
+                                node.request_file_from_node(file_locations.get(0), file_name);
+                            }
+
+                            break;
+
+                        case "printFiles":
+                            node.printFileNames();
+                            break;
+                        
+                        case "exit":
+                            output.writeObject(command_name);
+                            serverSocket.close();
+                            System.out.println("Node is exiting.");
+                            System.exit(0);
+                            break;
+                        
+                        default:
+                            System.out.println("Unknown command: " + input);
+                            break;
+                    }
+                    
+                } catch(Exception e) {
+                    e.printStackTrace();
+                }
             }
 
         } catch (Exception e) {
