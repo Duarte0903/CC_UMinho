@@ -1,6 +1,7 @@
 import java.util.*;
 import java.io.*;
 import java.net.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class FS_Tracker {
     private static String ip = "10.0.1.10";
@@ -10,12 +11,13 @@ public class FS_Tracker {
                                                     // Value : Node files 
     
     private Reentrantlock lock;
+    
     // Constructors
 
     public FS_Tracker() {
         this.numConnectedNodes = 0;
         this.nodesFiles = new HashMap <String,List<String>> ();
-        this.lock = new Reentrantlock;
+        this.lock = new Reentrantlock();
     }
 
     // Getters
