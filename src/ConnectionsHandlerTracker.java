@@ -5,10 +5,10 @@ import java.net.*;
 public class ConnectionsHandlerTracker implements Runnable {
     
     private static Socket nodeSocket;
-    private FS_Tracker localData;
+    private TrackerData localData;
     
 
-    ConnectionsHandlerTracker(Socket nodeSocket, FS_Tracker localData) {
+    ConnectionsHandlerTracker(Socket nodeSocket, TrackerData localData) {
         ConnectionsHandlerTracker.nodeSocket = nodeSocket;
         this.localData = localData;
     }
@@ -17,7 +17,7 @@ public class ConnectionsHandlerTracker implements Runnable {
         return ConnectionsHandlerTracker.nodeSocket;
     }
 
-    public FS_Tracker getLocalData() {
+    public TrackerData getLocalData() {
         return localData;
     }
 

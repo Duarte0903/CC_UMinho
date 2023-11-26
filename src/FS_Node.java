@@ -1,13 +1,18 @@
 import java.util.*;
+import java.util.zip.CRC32;
 import java.io.*;
 import java.net.*;
 
 public class FS_Node {
+
+    // Connection info
     private String ip;
-    private int tcp_port = 42069;
-    private int udp_port = 65535;
-    private List<String> localData;  // ficheiros do node
-    private static String files_directory;
+    private static int tcpPort = 42069;
+    private static int udpPort = 65535;
+    
+    // Files info
+    private List<String> localData;  // Node files
+    private static String filesDirectory;
     
     // Constructors
 
@@ -15,7 +20,7 @@ public class FS_Node {
         this.setIp(null);
         this.localData = new ArrayList<>();
 
-        FS_Node.files_directory = path;
+        FS_Node.filesDirectory = path;
     
         // Access the files in the specified directory
         File folder = new File(path);
@@ -38,20 +43,20 @@ public class FS_Node {
         return this.ip;
     }
 
-    public int get_node_tcp_port() {
-        return this.tcp_port;
+    public static int getNodeTcpPort() {
+        return tcpPort;
     }
 
-    public int get_node_udp_port() {
-        return this.udp_port;
+    public static int getNodeUdpPort() {
+        return udpPort;
     }
 
     public List<String> getLocalData() {
         return this.localData;
     }
 
-    public String get_files_directory() {
-        return this.files_directory;
+    public String getFilesDirectory() {
+        return this.filesDirectory;
     }
 
     // Setters
@@ -77,78 +82,309 @@ public class FS_Node {
         }
     }
 
-    public void request_file_from_node(String node_ip, String file_name) {
+    private static byte[] readFileToByteArray(File file) {
+        
+        FileInputStream fis = null;
+        // Creating a byte array using the length of the file
+        byte[] bArray = new byte[(int) file.length()];
+        
         try {
-            DatagramSocket udp_socket = new DatagramSocket();
-            String request_message = "FileTransferRequest:" + file_name;
-            byte[] request_data = request_message.getBytes();
-            InetAddress receiverAddress = InetAddress.getByName(node_ip);
-            DatagramPacket requestPacket = new DatagramPacket(request_data, request_data.length, receiverAddress, this.get_node_udp_port());
-            udp_socket.send(requestPacket);
-            udp_socket.close();
+            fis = new FileInputStream(file);
+            fis.read(bArray);
+            fis.close();
+
+        } catch (IOException ioExp) {
+            ioExp.printStackTrace();
+        }
+        return bArray;
+    }
+
+    private static void sendAck(int foundLast, DatagramSocket socket, InetAddress address, int port) throws IOException {
+     
+        // Send acknowledgement
+        byte[] ackPacket = new byte[2];
+        ackPacket[0] = (byte) (foundLast >> 8);
+        ackPacket[1] = (byte) (foundLast);
+        
+        // The ack datagram packet to be sent
+        DatagramPacket acknowledgement = new DatagramPacket(ackPacket, ackPacket.length, address, port);
+        socket.send(acknowledgement);
+        
+        // For debugging reasons
+        System.out.println("Sent ack: Sequence Number = " + foundLast);
+    }
+
+    public void sendRequest(DatagramSocket udpSocket, String nodeName, String fileName) {
+        // Needs to check sequence, acks amd checksum
+        try {
+            InetAddress receiverAddress = InetAddress.getByName(nodeName);
+            
+            int sequenceNumber = 0;
+            
+
+            byte[] message = new byte[1024]; 
+            message[0] = (byte) (sequenceNumber >> 8);
+            message[1] = (byte) (sequenceNumber);
+            message[2] = (byte) (1);
+            // Signaling that this packet is a request
+            message[3] = (byte) (1);
+            
+            // Preparing the request
+            String requestMessage = "FileTransferRequest:" + fileName;
+            byte[] requestData = requestMessage.getBytes();
+            System.arraycopy(requestData, 0, message, 4, requestData.length);
+
+            // Calculate checksum of the packet
+            CRC32 crc = new CRC32();
+            crc.update(message, 0, 1020); 
+            long checksum = crc.getValue();
+
+            // Append the checksum to the message
+            message[1021] = (byte) (checksum >> 24);
+            message[1022] = (byte) (checksum >> 16);
+            message[1023] = (byte) (checksum >> 8);
+            message[1024] = (byte) checksum;
+
+            // Sending the data
+            DatagramPacket sendPacket = new DatagramPacket(message, message.length, receiverAddress, this.getNodeUdpPort());
+            udpSocket.send(sendPacket); 
+            // For debuging reasons
+            System.out.println("Sent: Sequence number = " + sequenceNumber);
+            
+            // Verifieing if the other node received the packet
+            int ackSequence = 0;
+            boolean ack; 
+
+            while (true) {
+                // Create another packet for ack
+                byte[] ackInfo = new byte[2]; 
+                DatagramPacket ackpack = new DatagramPacket(ackInfo, ackInfo.length);
+
+                try {
+                    // Waiting for the other node to send the ack
+                    udpSocket.setSoTimeout(50); 
+                    udpSocket.receive(ackpack);
+
+                    ackSequence = ((ackInfo[0] & 0xff) << 8) + (ackInfo[1] & 0xff); // Figuring the sequence number
+                    ack = true; 
+                } catch (SocketTimeoutException e) {
+                    System.out.println("Socket timed out waiting for ack");
+                    ack = false; 
+                }
+
+                // If the package was received correctly next packet can be sent
+                if ((ackSequence == sequenceNumber) && (ack)) {
+                    // For debugging reasons
+                    System.out.println("Ack received: Sequence Number = " + ackSequence);
+                    break;
+                } 
+                // Package was not received, so we resend it
+                else {
+                    udpSocket.send(sendPacket);
+                    // For debugging reasons
+                    System.out.println("Resending: Sequence Number = " + sequenceNumber);
+                }
+            }
         }  catch (IOException e) {
             e.printStackTrace();
         }
     }
+    
+    private void sendFile(DatagramSocket udpSocket, byte[] fileBytes, InetAddress senderAddresss, int port) throws IOException {
+        
+        int sequenceNumber = 0; // For order
+        boolean flag; // To see if we got to the end of the file
+        int ackSequence = 0; // To see if the datagram was received correctly
 
-    public void handle_udp_requests() {
-        try {
-            DatagramSocket udpSocket = new DatagramSocket(get_node_udp_port());
-            byte[] receiveData = new byte[1024]; // ajustar o tamanho do buffer
-            
+        for (int i = 0; i < fileBytes.length; i = i + 1017) {
+            sequenceNumber += 1;
+
+            // Create message
+            byte[] message = new byte[1024]; // First two bytes of the data are for control (datagram integrity and order)
+            message[0] = (byte) (sequenceNumber >> 8);
+            message[1] = (byte) (sequenceNumber);
+
+            if ((i + 1021) >= fileBytes.length) { 
+                flag = true;
+                message[2] = (byte) (1); // We reached the end of the file (last datagram to be send)
+            } else {
+                flag = false;
+                message[2] = (byte) (0); // We haven't reached the end of the file, still sending datagrams
+            }
+
+            // Signaling that this packet is not a request
+            message[3] = (byte) (0);
+
+            // Checks if it is the last datagram
+            if (!flag) {
+                System.arraycopy(fileBytes, i, message, 4, 1017);
+            } else { 
+                System.arraycopy(fileBytes, i, message, 4, fileBytes.length - i);
+            }
+
+            // Calculate checksum
+            CRC32 crc = new CRC32();
+            crc.update(message, 0, 1020); 
+            long checksum = crc.getValue();
+
+            // Append the checksum to the message
+            message[1021] = (byte) (checksum >> 24);
+            message[1022] = (byte) (checksum >> 16);
+            message[1023] = (byte) (checksum >> 8);
+            message[1024] = (byte) checksum;
+
+            // Sending the data
+            DatagramPacket sendPacket = new DatagramPacket(message, message.length, senderAddresss, port);
+            udpSocket.send(sendPacket); 
+            System.out.println("Sent: Sequence number = " + sequenceNumber);
+
+            boolean ack; 
+
             while (true) {
-                DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-                udpSocket.receive(receivePacket);
-                String received_message = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                System.out.println("\u001B[32mReceived UDP request: " + "\u001B[0m\n");
-                InetAddress address = receivePacket.getAddress();
+                // Create another packet for ack
+                byte[] ackInfo = new byte[2]; 
+                DatagramPacket ackpack = new DatagramPacket(ackInfo, ackInfo.length);
 
-                if (received_message.startsWith("FileTransferRequest:")) {
-                    String[] parts = received_message.split(":");
-                    String requestedFileName = parts[1];
+                try {
+                    // Waiting for the other node to send the ack
+                    udpSocket.setSoTimeout(50); 
+                    udpSocket.receive(ackpack);
+
+                    ackSequence = ((ackInfo[0] & 0xff) << 8) + (ackInfo[1] & 0xff); // Figuring the sequence number
+                    ack = true; 
+                } catch (SocketTimeoutException e) {
+                    System.out.println("Socket timed out waiting for ack");
+                    ack = false; 
+                }
+
+                // If the package was received correctly next packet can be sent
+                if ((ackSequence == sequenceNumber) && (ack)) {
+                    // For debugging reasons
+                    System.out.println("Ack received: Sequence Number = " + ackSequence);
+                    break;
+                } 
+                // Package was not received, so we resend it
+                else {
+                    udpSocket.send(sendPacket);
+                    // For debugging reasons
+                    System.out.println("Resending: Sequence Number = " + sequenceNumber);
+                }
+            }
+        }
+    }
+
+    // Por completar
+    public void handleUdpRequests(boolean isRequest, String nodeName, String fileName, DatagramSocket udpSocket) {
+        
+        try {
+    
+            Map<String,Integer> sequenceInfo = new HashMap<>(); // Key: Node name
+                                                                // Value: Last node sequence value
+
+            boolean eofFlag; 
+            int sequenceNumber = 0; 
+            int foundLast = 0; 
+            
+            if (isRequest) {
+                sendRequest(udpSocket, nodeName, fileName);
+            }
+
+            while (true && !isRequest) {
+                byte[] message = new byte[1024]; 
+                byte[] fileByteArray = new byte[1017]; 
+
                 
-                    if (this.getLocalData().contains(requestedFileName)) {
-                        // File exists in the node's directory
-                        Thread file_request_thread = new Thread(() -> {
-                            try (DatagramSocket socket = new DatagramSocket()) {
-                                File fileToSend = new File(this.get_files_directory() + requestedFileName);
+                // Receive packet and retrieve the data
+                DatagramPacket receivedPacket = new DatagramPacket(message, message.length);
+                udpSocket.receive(receivedPacket);
+                message = receivedPacket.getData(); 
+
+                // Get port and address for sending acknowledgment
+                InetAddress address = receivedPacket.getAddress();
+                int port = receivedPacket.getPort();
+
+                // Retrieves received sequence
+                sequenceNumber = ((message[0] & 0xff) << 8) + (message[1] & 0xff);
                 
-                                // Prepare to send file size as the first packet
-                                long fileSize = fileToSend.length();
-                                byte[] fileSizeBytes = String.valueOf(fileSize).getBytes();
-                                DatagramPacket fileSizePacket = new DatagramPacket(
-                                        fileSizeBytes,
-                                        fileSizeBytes.length,
-                                        address,
-                                        this.get_node_udp_port()
-                                );
-                                socket.send(fileSizePacket);
+                // Retrieves received checksum
+                long receivedChecksum =
+                        ((message[1019] & 0xFFL) << 24) |
+                        ((message[1020] & 0xFFL) << 16) |
+                        ((message[1021] & 0xFFL) << 8) |
+                        (message[1022] & 0xFFL);
+
+                // Check if we reached EOF
+                eofFlag = (message[2] & 0xff) == 1;
                 
-                                // Send the file content in subsequent packets
-                                try (FileInputStream fileInputStream = new FileInputStream(fileToSend)) {
-                                    byte[] buffer = new byte[1024];
-                                    int bytesRead;
-                
-                                    while ((bytesRead = fileInputStream.read(buffer)) != -1) {
-                                        DatagramPacket packet = new DatagramPacket(
-                                                buffer,
-                                                bytesRead,
-                                                address,
-                                                this.get_node_udp_port()
-                                        );
-                                        socket.send(packet);
-                                        // Clear the buffer after sending
-                                        buffer = new byte[1024];
-                                    }
-                                }
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            }
-                        });
-                        file_request_thread.start();
-                    } else {
-                        System.out.println("\u001B[31mRequested file does not exist in the directory.\u001B[0m\\n");
+                // Calculate checksum
+                CRC32 crc = new CRC32();
+                crc.update(message, 0, 1020); 
+                long checksum = crc.getValue();
+
+                // Check if sequence is correct
+                if (sequenceNumber == (foundLast + 1) && (receivedChecksum == checksum)) {
+                                    
+                    // Store the sequence number
+                    foundLast = sequenceNumber;
+
+                    // Retrieve data from message
+                    System.arraycopy(message, 4, fileByteArray, 0, 1017);
+                    
+                    if(message[3] != (byte) (1)){ // Se o packet for referente a um ficheiro que pedimos
+                                                  // Apenas podemos receber um ficheiro de cada vez
+                        
+                        // Write the retrieved data to the file and print received data sequence number
+                        //outToFile.write(fileByteArray);
+                        //System.out.println("Received: Sequence number:" + foundLast);
+
+                        // Check for last datagram
+                        //if (eofFlag) {
+                        //    outToFile.close();
+                        //    break;
+                        //}
                     }
+                    // Se for referente a um pedido por parte de um node qualquer
+                    else { // Podemos receber varios request ao mesmo tempos e temos de poder enviar varios ficheiro ao mesmo tempo   
+                        
+                        //sendAck(foundLast, udpSocket, address, port);
+                        String receivedMessage = new String(fileByteArray);
+
+                        if (receivedMessage.startsWith("FileTransferRequest:")) {
+                            String[] parts = receivedMessage.split(":");
+                            String requestedFileName = parts[1];
+                        
+                            if (this.getLocalData().contains(requestedFileName)) {
+                
+                                File requestedFile = new File(this.getFilesDirectory() + requestedFileName);
+                                byte[] fileByte = readFileToByteArray(requestedFile);
+                                
+                                Thread sendFileToNode = new Thread ( () -> {
+                                    try {
+                                        sendFile(udpSocket,fileByte,address,port);
+                                    } catch (IOException e) {
+                                        System.out.println("Could not send file due to IOException in thread.");
+                                        e.printStackTrace();
+                                    }    
+                                });
+                                sendFileToNode.start();
+                            }
+                        }
+                    }
+                    // Send ack
+                    //sendAck(foundLast, udpSocket, address, port);
+                        
+                } else {
+                    if(sequenceNumber != (foundLast + 1)){
+                       System.out.println("Expected sequence number: " + (foundLast + 1) + " but received " + sequenceNumber + ". DISCARDING");
+                       // Resend the ack
+                       sendAck(foundLast, udpSocket, address, port);
+                    }
+                    else {
+                       System.out.println("Expected chekcsum number: " + receivedChecksum + " but calculated " + checksum + ". DISCARDING");
+                       // Resend the ack
+                       sendAck(foundLast, udpSocket, address, port);
+                    }
+                
                 }
             }
         } catch (IOException e) {
@@ -180,33 +416,36 @@ public class FS_Node {
             // Notifica o servidor dos ficheiros que tem armazenados
             output.writeObject(node.getLocalData());
 
-            Thread udp_requests_thread = new Thread( () -> {
-                node.handle_udp_requests();
+            DatagramSocket udpSocket = new DatagramSocket(getNodeUdpPort());
+
+            Thread udpRequestsThread = new Thread( () -> {
+                node.handleUdpRequests(false, null, null, udpSocket);
             });
-            udp_requests_thread.start();
+            udpRequestsThread.start();
 
             while (true) {           
                 try {
                     BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
                     String inp = reader.readLine();
                     
-                    String[] command_parts = inp.split(" ");
-                    String command_name = command_parts[0];
-                    List<String> command_arguments = Arrays.asList(Arrays.copyOfRange(command_parts, 1, command_parts.length));
+                    String[] commandParts = inp.split(" ");
+                    String commandName = commandParts[0];
+                    List<String> commandArguments = Arrays.asList(Arrays.copyOfRange(commandParts, 1, commandParts.length));
                         
-                    switch (command_name) {
+                    switch (commandName) {
                         case "get": 
-                            String file_name = command_arguments.get(0);
-                            output.writeObject("get " + file_name);
-                            List<String> file_locations = (List<String>)input.readObject();  // Endereços IP dos nodos onde está o ficheiro
+                            String fileName = commandArguments.get(0);
+                            output.writeObject("get " + fileName);
+                            List<String> fileLocations = (List<String>)input.readObject();  // Endereços IP dos nodos onde está o ficheiro
 
-                            if (file_locations.isEmpty()) {
-                                System.out.println("\u001B[31mThe requested file is not available in any nodes. \u001B[0m\n");
+                            if (fileLocations.isEmpty()) {
+                                System.out.println("\u001B[31m The requested file is not available in any nodes. \u001B[0m\n");
                             }
 
                             else {
-                                System.out.println("File location: " + file_locations.get(0) + "\n");
-                                node.request_file_from_node(file_locations.get(0), file_name);
+                                System.out.println("File location: " + fileLocations.get(0) + "\n");
+                                // Temos de desenvolver algoritmo para verificar onde vamos buscar cada chunk do ficheiro
+                                node.handleUdpRequests(true,fileLocations.get(0), fileName, udpSocket);
                             }
 
                             break;
@@ -216,7 +455,7 @@ public class FS_Node {
                             break;
                         
                         case "exit":
-                            output.writeObject(command_name);
+                            output.writeObject(commandName);
                             serverSocket.close();
                             System.out.println("Node is exiting.");
                             System.exit(0);
