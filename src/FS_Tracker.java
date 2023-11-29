@@ -4,8 +4,6 @@ import java.net.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class FS_Tracker {
-<<<<<<< HEAD
-<<<<<<< HEAD
     private static String ip = "10.0.1.10";
     private static int port = 42069;
     private int numConnectedNodes;
@@ -116,12 +114,6 @@ public class FS_Tracker {
         return nodeIps;
     }    
 
-=======
-     
->>>>>>> 547cfbe64870ac18ea1a94d8d16770e36f79af10
-=======
-     
->>>>>>> 547cfbe64870ac18ea1a94d8d16770e36f79af10
     public static void main(String[] args) {
         TrackerData serverData = new TrackerData();
 
