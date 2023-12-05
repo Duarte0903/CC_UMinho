@@ -2,6 +2,9 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.zip.CRC32;
+
+import org.w3c.dom.Node;
+
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -146,17 +149,21 @@ public class FS_Node {
         System.out.println("Sent ack: Sequence Number = " + foundLast);
     }
 
-    private void sendRequests(String fileName, List<String> fileLocations) {
+    private void sendRequests(String fileName, List<String> fileLocations, FS_Node node) throws FileNotFoundException {
                           
         class Request implements Runnable {
             
             private String fileName;
             private String nodeAdress;
+            private FS_Node node;
+            private FileOutputStream out;
 
     
-            public Request(String fileName, String nodeAdress) {
+            public Request(String fileName, String nodeAdress, FS_Node node, FileOutputStream out) {
                 this.fileName = fileName;
                 this.nodeAdress = nodeAdress;
+                this.node = node;
+                this.out = out;
             }
     
             @Override
@@ -164,7 +171,7 @@ public class FS_Node {
               try {
 
                 // Create a new socket with a dynamically allocated port
-                int localPort = getUniquePort();
+                int localPort = node.getUniquePort();
                 DatagramSocket newSocket = new DatagramSocket(localPort);
               
                 try {
@@ -172,7 +179,7 @@ public class FS_Node {
                     DatagramPacket request = createRequestDatagram(this.fileName,this.nodeAdress,getNodeUdpPort());
                     newSocket.send(request);
 
-                    int sequenceNumber = 0;
+                    int seq = 0;
                     int senderPort = 0;
                     
                     // Esperar pelo ack do request
@@ -195,23 +202,103 @@ public class FS_Node {
                         }
 
                         // If the package was received correctly 
-                        if ((ackSequence == sequenceNumber+1) && (ackRec)) {
-                            sequenceNumber = ackSequence + 1;
+                        if ((ackSequence == seq+1) && (ackRec)) {
+                            seq = ackSequence;
                             System.out.println("Ack received: Sequence Number = " + ackSequence);
                             break;
                         } 
                         // Package was not received, so we resend it
                         else {
                             newSocket.send(request);
-                            System.out.println("Resending: Sequence Number = " + sequenceNumber);
+                            System.out.println("Resending: Sequence Number = " + seq);
                         }
                     }
 
-                    // Receber dados
-                    while (true) {
-                        break;
-                    } 
 
+                    // Receber dados
+                    boolean lastChunk = false;
+                    while (!lastChunk) {
+
+                        byte[] message = new byte[1024];
+
+                        DatagramPacket receivedPacket = new DatagramPacket(message, message.length);
+                        
+                        boolean flag = false;
+                        while(!flag){
+                            try {
+                                newSocket.setSoTimeout(50); // Waiting for the server to send the ack
+                                newSocket.receive(receivedPacket);
+                                flag = true;
+                            } catch (SocketTimeoutException e) {
+                                System.out.println("Socket timed out waiting for file chunk");
+                            }
+                        }
+                        message = receivedPacket.getData();
+                        
+                        // Other node info
+                        InetAddress address = receivedPacket.getAddress();
+                        int port = receivedPacket.getPort();
+                        
+                        // Retrieves received sequence
+                        int sequenceNumber = ((message[0] & 0xff) << 8) + (message[1] & 0xff);
+
+                        // Verifies if is eof
+                        if(message[2] == (byte) (1)) lastChunk = true;   
+
+                        // Checks the file name lenght and finds the fileName
+                        int nameLength = (int) message[3];
+
+                        byte[] fileNameBytes = new byte[nameLength];
+                        System.arraycopy(message, 4, fileNameBytes, 0, nameLength); 
+
+                        String fileName = new String(fileNameBytes, StandardCharsets.UTF_8);
+
+                        // Retrieves received checksum
+                        long receivedChecksum =
+                                    ((message[1020] & 0xFFL) << 24) |
+                                    ((message[1021] & 0xFFL) << 16) |
+                                    ((message[1022] & 0xFFL) << 8) |
+                                    (message[1023] & 0xFFL);
+
+                        // Calculate checksum
+                        CRC32 crc = new CRC32();
+                        crc.update(message, 0, 1019); 
+                        long checksum = crc.getValue();
+
+                        byte[] fileByteArray = new byte[1016-nameLength];
+
+                        if (sequenceNumber == (seq+1) ) {
+                            if(receivedChecksum == checksum){
+                                // set the last sequence number to be the one we just received
+                                seq = sequenceNumber;
+                
+                                // Retrieve data from message
+                                System.arraycopy(message, 4+nameLength, fileByteArray, 0, 1016-nameLength);
+                
+                                // Write the retrieved data to the file and print received data sequence number
+                                this.out.write(fileByteArray);
+                                System.out.println("Received: Sequence number:" + seq);
+                
+                                // Send acknowledgement
+                                sendAck(seq+1, newSocket, address, port, false);
+                            
+                            } else {
+                                System.out.println("Expected checksum number: " + checksum + " but received " + receivedChecksum + ". DISCARDING");
+                                // Re send the acknowledgement
+                                sendAck(seq, newSocket, address, port, false);
+                            }
+                        } else {
+                            System.out.println("Expected sequence number: " + (seq + 1) + " but received " + sequenceNumber + ". DISCARDING");
+                            // Re send the acknowledgement
+                            sendAck(seq, newSocket, address, port, false);
+                        }
+                        // Check for last datagram
+                        if (lastChunk) {
+                            this.out.close();
+                        }
+
+                    } 
+                    
                     int isClosing = 0;
                     // Receber ack de fecho e enviar ack correspondente e fechar socket
                     while (true) {
@@ -225,7 +312,7 @@ public class FS_Node {
                             newSocket.setSoTimeout(50); // Waiting for the server to send the ack
                             newSocket.receive(ackpack);
                             ackSequence = ((ack[0] & 0xff) << 8) + (ack[1] & 0xff); // Figuring the sequence number
-                            isClosing = ack[2];
+                            isClosing = (int) ack[2];
                             ackRec = true; // We received the ack
                         } catch (SocketTimeoutException e) {
                             System.out.println("Socket timed out waiting for ack");
@@ -233,23 +320,17 @@ public class FS_Node {
                         }
 
                         // If the package was received correctly 
-                        if ((ackSequence == sequenceNumber+1) && (ackRec) && (isClosing==1)) {
-                            sequenceNumber = ackSequence + 1;
+                        if ((ackSequence == seq+2) && (ackRec) && (isClosing==1)) {
+                            seq = ackSequence;
                             System.out.println("Ack received: Sequence Number = " + ackSequence);
+                            sendAck(seq+1, newSocket, InetAddress.getByName(this.nodeAdress), senderPort, true);
                             break;
                         } 
-                        // Package was not received, so we resend it
-                        else {
-                            newSocket.send(request);
-                            System.out.println("Resending: Sequence Number = " + sequenceNumber);
-                        }
                     }
-                    sendAck(isClosing, newSocket, InetAddress.getByName(this.nodeAdress), senderPort, true);
+                    
                     newSocket.setSoTimeout(50);
-
                     newSocket.close();
-
-
+                    
                 } catch (UnknownHostException e) {
                     e.printStackTrace();
                 } catch (IOException e) {
@@ -263,12 +344,15 @@ public class FS_Node {
             }
         }
 
+        File file = new File(getFilesDirectory() + "/" + fileName);
+        FileOutputStream outToFile = new FileOutputStream(file);
+
         // Para quando formos fazer fragmentacao vamos executar este codigo
         // onde cada thread vai buscar um certo chunck a um certo nodo
         int poolSize = 1; 
         ExecutorService threadPool = Executors.newFixedThreadPool(poolSize);
 
-        Runnable task = new Request(fileName,fileLocations.get(0));
+        Runnable task = new Request(fileName,fileLocations.get(0), node, outToFile);
 
         threadPool.submit(task);
 
@@ -309,9 +393,9 @@ public class FS_Node {
 
     public int sendFile(DatagramSocket newSocket, InetAddress senderAddress, int port, int sequence, String fileName, byte[] fileBytes) throws IOException {
         
-        int sequenceNumber = sequence; // For order
+        int ackSequence = 0; // For order
         boolean eofFlag; // To see if we got to the end of the file
-        int ackSequence = 0; // To see if the datagram was received correctly
+        int sequenceNumber = sequence; // To see if the datagram was received correctly
 
         // File name prep
         byte[] fileNameBytes = fileName.getBytes();
@@ -359,11 +443,14 @@ public class FS_Node {
             message[1023] = (byte) checksum;
 
             // Sending the data
+            
+            System.out.println("Sending file chunk number" + i);
             DatagramPacket sendPacket = new DatagramPacket(message, message.length, senderAddress, port);
             newSocket.send(sendPacket); 
             
             boolean ackRec;
 
+            System.out.println("Waiting for ack from chunk number" + i);
             while (true) {
                 byte[] ack = new byte[3]; // Create another packet for datagram ackknowledgement
                 DatagramPacket ackpack = new DatagramPacket(ack, ack.length);
@@ -379,7 +466,7 @@ public class FS_Node {
                 }
 
                 // If the package was received correctly next packet can be sent
-                if ((ackSequence == sequenceNumber) && (ackRec)) {
+                if ((ackSequence == sequenceNumber+1) && (ackRec)) {
                     System.out.println("Ack received: Sequence Number = " + ackSequence);
                     break;
                 } 
@@ -400,7 +487,7 @@ public class FS_Node {
     public void processRequests(byte[] firstMessage, InetAddress senderAddress, int port) {
         
         try {
-          
+            
             // Create a new socket with a dynamically allocated port
             int localPort = this.getUniquePort();
             DatagramSocket newSocket = new DatagramSocket(localPort);
@@ -410,6 +497,8 @@ public class FS_Node {
                 
                 try {
                     
+                    System.out.println("Processing request from node.");
+
                     Boolean passedFirstPacket = false;
                     Boolean newPacketFlag = false;
 
@@ -419,7 +508,7 @@ public class FS_Node {
 
                         byte[] message = new byte[1024];
 
-                        if(!newPacketFlag){
+                        if(newPacketFlag){
                              
                             // Receive packet and retrieve the data
                             DatagramPacket receivedPacket = new DatagramPacket(message, message.length);
@@ -453,32 +542,41 @@ public class FS_Node {
                         crc.update(message, 0, 1019); 
                         long checksum = crc.getValue();
 
-
                         // Check if sequence is correct
                         if ((receivedChecksum == checksum)) {
-                           
+                            
+                            System.out.println("Sending ack for node request.");
+                            
                             sendAck(sequenceNumber+1, newSocket, senderAddress, port, false);
 
                             passedFirstPacket = true;
 
-                            File requestedFile = new File(this.getFilesDirectory() + fileName);
+                            File requestedFile = new File(this.getFilesDirectory() + "/" + fileName);
                             byte[] fileByteArray = readFileToByteArray(requestedFile);
 
+                            System.out.println("Now sending file.");
+
                             lastSequence = sendFile(newSocket, senderAddress, port, sequenceNumber+1, fileName, fileByteArray);
+
+                            System.out.println("File sent.");
                             
                         } else {
                                 
                             System.out.println("Expected chekcsum number: " + receivedChecksum + " but calculated " + checksum + ". DISCARDING");
-                            // Resend the ack
+                            
+                            System.out.println("Asking node to resend the request.");
+
                             sendAck(sequenceNumber, newSocket, senderAddress, port, false);
 
                             newPacketFlag = true;    
                         }        
                     }                
 
+                    System.out.println("Socket closing, sendind closing ack.");
                     // Tem de enviar ack a dizer que vai fechar
                     sendAck(lastSequence, newSocket, senderAddress, port, true);
 
+                    System.out.println("Waiting for last ack.");
                     // Tem de receber ack a dizer que a mensagem foi recebida e que o outro nodo tambem vai fechar?
                     while (true) {
                         
@@ -493,7 +591,7 @@ public class FS_Node {
                             newSocket.setSoTimeout(50); // Waiting for the server to send the ack
                             newSocket.receive(ackpack);
                             ackSequence = ((ack[0] & 0xff) << 8) + (ack[1] & 0xff); // Figuring the sequence number
-                            conn = (int) ack[0];
+                            conn = (int) ack[2];
                             ackRec = true; // We received the ack
                         } catch (SocketTimeoutException e) {
                             System.out.println("Socket timed out waiting for ack");
@@ -518,6 +616,7 @@ public class FS_Node {
                     e.printStackTrace();
                 } finally {
                     // Close the socket when done
+                    System.out.println("Closing the secondary socket.");
                     newSocket.close();
                     this.portInfo.put(localPort, false);
                 }
@@ -539,7 +638,7 @@ public class FS_Node {
         // Estabelece a conecxao com o Servidor
         try {
             Socket serverSocket = new Socket(serverIp, serverPort);
-            System.out.println("\u001B[32mNode connected to tracker.\u001B[0m\n");
+            System.out.println("\u001B[32m Node connected to tracker.\u001B[0m\n");
             
             // Cria os pipes de escrita e leitura
             ObjectOutputStream output = new ObjectOutputStream(serverSocket.getOutputStream());
@@ -566,6 +665,8 @@ public class FS_Node {
                         InetAddress address = packet.getAddress();
                         int port = packet.getPort();
         
+                        System.out.println("Received request from other node!");
+
                         // Process the received datagram
                         node.processRequests(packet.getData(), address, port);
                     } catch (IOException e) {
@@ -599,7 +700,8 @@ public class FS_Node {
                                 System.out.println("File location: " + fileLocations.get(0) + "\n");
                                 // Temos de desenvolver algoritmo para verificar onde vamos buscar cada chunk do ficheiro
                             
-                                node.sendRequests(fileName,fileLocations);
+                                System.out.println("Sending requests.");
+                                node.sendRequests(fileName,fileLocations,node);
 
                             }
 
