@@ -40,11 +40,11 @@ public class ConnectionsHandlerTracker implements Runnable {
             out.writeObject(nodeIp);
 
             // Recebe informacao e insere
-            List<String> filesNode = new ArrayList<String>((List<String>) in.readObject());
+            Map<String,FileInfo> filesNode = new HashMap<String,FileInfo> ((Map<String,FileInfo>) in.readObject());
             this.localData.insertNewNode(nodeIp,filesNode);
             System.out.println("Informacao dos ficheiros do node com ip:" + nodeIp + " adicionada. \n");
             
-            System.out.println ("files do Node" + filesNode + "\n"); // Test
+            System.out.println ("Files do Node" + filesNode + "\n"); // Test
             
             while (!getNodeSocket().isClosed()) {
                 try {
@@ -62,7 +62,7 @@ public class ConnectionsHandlerTracker implements Runnable {
                         switch (commandName) {
                             case "get":
                                 String requested_file = commandArguments.get(0);
-                                List<String> file_locations = localData.getFileLocations(requested_file);
+                                List<FileInfo> file_locations = localData.getFileLocations(requested_file);
                                 out.writeObject(file_locations);
                                 break;
 

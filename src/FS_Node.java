@@ -1,4 +1,5 @@
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.zip.CRC32;
@@ -17,7 +18,7 @@ public class FS_Node {
     private static int udpPort = 65534;
     
     // Files info
-    private List<String> localData;  // Node files
+    private Map<String,FileInfo> localData;  // Node files
     private static String filesDirectory;
 
     private Map<Integer,Boolean> portInfo;      
@@ -26,7 +27,7 @@ public class FS_Node {
 
     public FS_Node(String path) {
         this.setIp(null);
-        this.localData = new ArrayList<>();
+        this.localData = new HashMap<>();
 
         FS_Node.filesDirectory = path;
     
@@ -37,8 +38,9 @@ public class FS_Node {
             File[] files = folder.listFiles();
             if (files != null) {
                 for (File file : files) {
+                    FileInfo info = new FileInfo(getIp(),file.getName(),file.length(),true);
                     if (file.isFile()) {
-                        this.localData.add(file.getName());
+                        this.localData.put(file.getName(),info);
                     }
                 }
             }
@@ -66,7 +68,7 @@ public class FS_Node {
         return udpPort;
     }
 
-    public List<String> getLocalData() {
+    public Map<String,FileInfo> getLocalData() {
         return this.localData;
     }
 
@@ -92,8 +94,8 @@ public class FS_Node {
             System.out.println("\nNo files in node database.\n");
         } else {
             System.out.println("\nFile names in node database: \n\n");
-            for (String fileName : localData) {
-                System.out.println("    " + fileName + "\n");
+            for (Entry<String, FileInfo> entry : getLocalData().entrySet()) {
+                System.out.println("    " + entry.getKey() + "\n");
             }
         }
     }
@@ -149,7 +151,7 @@ public class FS_Node {
         System.out.println("Sent ack: Sequence Number = " + foundLast);
     }
 
-    private void sendRequests(String fileName, List<String> fileLocations, FS_Node node) throws FileNotFoundException {
+    private void sendRequests(String fileName, List<FileInfo> fileLocations, FS_Node node) throws FileNotFoundException {
                           
         class Request implements Runnable {
             
@@ -391,17 +393,18 @@ public class FS_Node {
         return new DatagramPacket(message, message.length, receiverAddress, port);
     }
 
-    public int sendFile(DatagramSocket newSocket, InetAddress senderAddress, int port, int sequence, String fileName, byte[] fileBytes) throws IOException {
+    public int sendFile(DatagramSocket newSocket, InetAddress senderAddress, int port, int sequence, String fileName, byte[] fileBytes, long startPosition, long endPosition) throws IOException {
         
-        int ackSequence = 0; // For order
-        boolean eofFlag; // To see if we got to the end of the file
-        int sequenceNumber = sequence; // To see if the datagram was received correctly
+        int ackSequence = 0; 
+        int sequenceNumber = sequence; 
 
         // File name prep
         byte[] fileNameBytes = fileName.getBytes();
         int nameLength = fileNameBytes.length;
+        
+        if(fileBytes.length < endPosition) return -1;
 
-        for (int i = 0; i < fileBytes.length; i = i + 1016-nameLength) {
+        for (int i = (int) startPosition; i < (int) endPosition; i = i + 1016-nameLength) {
             sequenceNumber += 1;
 
             // Create message
@@ -411,24 +414,17 @@ public class FS_Node {
             message[0] = (byte) (sequenceNumber >> 8);
             message[1] = (byte) (sequenceNumber);
 
-            // Check if it is eof
-            if ((i + 1016-nameLength) >= fileBytes.length) { 
-                eofFlag = true;
-                message[2] = (byte) (1); // We reached the end of the file (last datagram to be send)
-            } else {
-                eofFlag = false;
-                message[2] = (byte) (0); // We haven't reached the end of the file, still sending datagrams
-            }
-
             // File Name injection
             message[3] = (byte) nameLength;
             System.arraycopy(fileNameBytes, 0, message, 4, nameLength);
 
-            // Checks if it is not the last datagram
-            if (!eofFlag) {
+            // Check if it is eof
+            if((i + 1016-nameLength) >= endPosition){
+                message[2] = (byte) (1); // last datagram to be send
+                System.arraycopy(fileBytes, i, message, 4+nameLength, (int) (endPosition - i));
+            } else {
+                message[2] = (byte) (0); // still sending datagrams
                 System.arraycopy(fileBytes, i, message, 4+nameLength, 1016-nameLength);
-            } else { 
-                System.arraycopy(fileBytes, i, message, 4+nameLength, fileBytes.length - i);
             }
 
             // Calculate checksum
@@ -529,6 +525,22 @@ public class FS_Node {
                         System.arraycopy(message, 4, fileNameBytes, 0, nameLength); 
 
                         String fileName = new String(fileNameBytes, StandardCharsets.UTF_8);
+ 
+                        int nextPosition = 4 + nameLength;
+
+                        // Retrieves received checksum
+                        long startPosition =
+                                    ((message[nextPosition+1] & 0xFFL) << 24) |
+                                    ((message[nextPosition+2] & 0xFFL) << 16) |
+                                    ((message[nextPosition+3] & 0xFFL) << 8) |
+                                    (message[nextPosition+4] & 0xFFL);
+
+                        // Retrieves received checksum
+                        long bytesToCopy =
+                                    ((message[nextPosition+5] & 0xFFL) << 24) |
+                                    ((message[nextPosition+6] & 0xFFL) << 16) |
+                                    ((message[nextPosition+7] & 0xFFL) << 8) |
+                                    (message[nextPosition+8] & 0xFFL);            
 
                         // Retrieves received checksum
                         long receivedChecksum =
@@ -556,7 +568,7 @@ public class FS_Node {
 
                             System.out.println("Now sending file.");
 
-                            lastSequence = sendFile(newSocket, senderAddress, port, sequenceNumber+1, fileName, fileByteArray);
+                            lastSequence = sendFile(newSocket, senderAddress, port, sequenceNumber+1, fileName, fileByteArray, startPosition, bytesToCopy);
 
                             System.out.println("File sent.");
                             
@@ -689,7 +701,7 @@ public class FS_Node {
                         case "get": 
                             String fileName = commandArguments.get(0);
                             output.writeObject("get " + fileName);
-                            List<String> fileLocations = (List<String>)input.readObject();  // Endereços IP dos nodos onde está o ficheiro
+                            List<FileInfo> fileLocations = (List<FileInfo>)input.readObject();  // Endereços IP dos nodos onde está o ficheiro
 
                             if (fileLocations.isEmpty()) {
                             
