@@ -575,51 +575,51 @@ public class FS_Node {
         }
     }
 
-    private static List<FileInfo> getFileLocations(ObjectInputStream input, int numNodes) throws IOException {
+    private List<FileInfo> getFileLocations(byte[] file, int numNodes) throws IOException {
         
-        List<FileInfo> r = new ArrayList<>();
-        int aux = numNodes;
+        List<FileInfo> filesArray = new ArrayList<>();
 
-        for (int i = 0; i < aux; i++){ 
+        int infoSize = file.length;
 
-            int dataSize = input.readInt();
-            byte[] file = new byte[dataSize]; 
-            input.read(file);
-                
+        int pos = 0;
+        while(numNodes > 0 && pos < infoSize){        
+            System.out.println();
+            System.out.println("ciclo a comecar, pos: "+ pos);
+
             // HostIp 
-            int hostLength = file[0];
+            int hostLength = file[pos];
             byte[] filehost = new byte[hostLength];
-            System.arraycopy(file, 1, filehost, 0, hostLength);
+            System.arraycopy(file, pos+1, filehost, 0, hostLength);
             String hostIp = new String(filehost);
             System.out.println(hostIp);
 
             // File name 
-            int nameLength = file[1+hostLength];
+            int nameLength = file[pos+1+hostLength];
             byte[] fileNameBytes = new byte[nameLength];
-            System.arraycopy(file, 2+hostLength, fileNameBytes, 0, nameLength);
+            System.arraycopy(file, pos+2+hostLength, fileNameBytes, 0, nameLength);
             String fileName = new String(fileNameBytes);
-            //System.out.println(fileName);
+            System.out.println(fileName);
             
             // File size
-            long size = ((long) (file[2+hostLength+nameLength] & 0xFF) << 24) |
-                        ((long) (file[3+hostLength+nameLength] & 0xFF) << 16) |
-                        ((long) (file[4+hostLength+nameLength] & 0xFF) << 8) |
-                        ( file[5+hostLength+nameLength] & 0xFF);
+            long size = ((file[pos+2+hostLength+nameLength] & 0xFFL) << 24) |
+                        ((file[pos+3+hostLength+nameLength] & 0xFFL) << 16) |
+                        ((file[pos+4+hostLength+nameLength] & 0xFFL) << 8) |
+                        ( file[pos+5+hostLength+nameLength] & 0xFFL);
             System.out.println(size);
             
             // Chunk list
             
-            int listsize = ((int) (file[6+hostLength+nameLength] & 0xFF) << 24) |
-                            ((int) (file[7+hostLength+nameLength] & 0xFF) << 16) |
-                            ((int) (file[8+hostLength+nameLength] & 0xFF) << 8) |
-                            (file[9+hostLength+nameLength] & 0xFF);
+            int listsize = ((file[pos+6+hostLength+nameLength] & 0xFF) << 24) |
+                            ((file[pos+7+hostLength+nameLength] & 0xFF) << 16) |
+                            ((file[pos+8+hostLength+nameLength] & 0xFF) << 8) |
+                            (file[pos+9+hostLength+nameLength] & 0xFF);
             System.out.println("Given size: " + listsize);
-            System.out.println("Calculated size: " + size/5000);
+            System.out.println("Calculated size: " + ((size/5000)+1));
 
             List<Boolean> list = new ArrayList<>();
             
-            int counter = 10+hostLength+nameLength;
-            while (counter<listsize+10+hostLength+nameLength) {
+            int counter = pos+10+hostLength+nameLength;
+            while (counter<listsize+pos+10+hostLength+nameLength) {
             
                 int bool = (int) file[counter];
                 //System.out.println(bool);
@@ -633,17 +633,20 @@ public class FS_Node {
 
                 counter++;
             }
-            System.out.println("CHEGUEI AQUI"+hostIp);
+            //System.out.println("CHEGUEI AQUI"+hostIp);
 
             FileInfo fileInfo = new FileInfo(hostIp, fileName, size, false);
 
             fileInfo.setChunks(list);
 
-            r.add(fileInfo);
+            filesArray.add(fileInfo);
 
+            numNodes--;
+            pos = pos + listsize+10+hostLength+nameLength;
+            System.out.println(pos);
         }
-
-        return r;
+            
+        return filesArray;
     }
 
     public static void main(String[] args) {
@@ -718,9 +721,17 @@ public class FS_Node {
                             int numNodes = input.readInt();
                             
                             if(numNodes>0){
+
+                                List<FileInfo> files = new ArrayList<>();
+
+                                int dataSize = input.readInt();
+                                System.out.println("Data size: " + dataSize);
+                                byte[] file = new byte[dataSize]; 
+                                input.read(file);
+
                                 // Reading byte array with the information about the file locations
-                                List<FileInfo> fileLocations = getFileLocations(input,numNodes); 
-                                
+                                List<FileInfo> fileLocation = node.getFileLocations(file, numNodes); 
+                    
                                 System.out.println("Sending requests.");
                                 //node.sendRequests(node,fileName,fileLocations); 
                             

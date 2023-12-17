@@ -47,68 +47,77 @@ public class ConnectionsHandlerTracker implements Runnable {
     }
 
 
-    private void sendFileLocationBytes(ObjectOutputStream out, FileInfo fileInfo) throws IOException {
+    private byte[] sendFileLocationBytes(List<FileInfo> fileList, int numberNodes) throws IOException {
         
+        int estimatedSize = 0;
+        for(FileInfo fileInfo : fileList){
+            estimatedSize += 10 
+                             + fileInfo.getFileName().length() 
+                             + fileInfo.getHostIp().length() 
+                             + fileInfo.getChunks().size();
+        }
+
+        byte[] info = new byte[estimatedSize];
+
+        int pos = 0;
+        for(FileInfo fileInfo : fileList){
             
             // HostIp prep
             String hostIp = fileInfo.getHostIp();
             byte[] filehost = hostIp.getBytes();
             int hostLength = filehost.length;
-            //System.out.println(hostIp);
+            System.out.println(hostIp);
 
             // File name prep
             String fileName = fileInfo.getFileName();
             byte[] fileNameBytes = fileName.getBytes();
             int nameLength = fileNameBytes.length;
-            //System.out.println(fileName);
+            System.out.println(fileName);
             
             // File size
             long size = fileInfo.getSize();
-            //System.out.println(size);
-            //System.out.println();
+            System.out.println(size);
             
             List<Boolean> list = fileInfo.getChunks();
             int listsize = list.size();
             System.out.println(listsize);
-
-            byte[] info = new byte[10+nameLength+hostLength+listsize];
+            System.out.println();
             
             // Storing resident node ip
-            info[0] = (byte) hostLength;
-            System.arraycopy(filehost, 0, info, 1, hostLength);
+            info[pos] = (byte) hostLength;
+            System.arraycopy(filehost, 0, info, pos+1, hostLength);
 
             // Storing file name
-            info[1+hostLength] = (byte) nameLength;
-            System.arraycopy(fileNameBytes, 0, info, 2+hostLength, nameLength);
+            info[pos+1+hostLength] = (byte) nameLength;
+            System.arraycopy(fileNameBytes, 0, info, pos+2+hostLength, nameLength);
 
             // Storing the file size
-            info[2+hostLength+nameLength] = (byte) (size >> 24);
-            info[3+hostLength+nameLength] = (byte) (size >> 16);
-            info[4+hostLength+nameLength] = (byte) (size >> 8);
-            info[5+hostLength+nameLength] = (byte) size;
+            info[pos+2+hostLength+nameLength] = (byte) (size >> 24);
+            info[pos+3+hostLength+nameLength] = (byte) (size >> 16);
+            info[pos+4+hostLength+nameLength] = (byte) (size >> 8);
+            info[pos+5+hostLength+nameLength] = (byte) size;
 
             // Storing chunk list
-            info[6+hostLength+nameLength] = (byte) (listsize >> 24);
-            info[7+hostLength+nameLength] = (byte) (listsize >> 16);
-            info[8+hostLength+nameLength] = (byte) (listsize >> 8);
-            info[9+hostLength+nameLength] = (byte) listsize;
+            info[pos+6+hostLength+nameLength] = (byte) (listsize >> 24);
+            info[pos+7+hostLength+nameLength] = (byte) (listsize >> 16);
+            info[pos+8+hostLength+nameLength] = (byte) (listsize >> 8);
+            info[pos+9+hostLength+nameLength] = (byte) listsize;
 
-            int i = 0;
-            int counter = 10+hostLength+nameLength;
+            int i = pos+10+hostLength+nameLength;
             for(Boolean value : list) {
                 if(value==true){
-                    info[counter] = (byte) 1;
+                    info[i] = (byte) 1;
                 } else {
-                    info[counter] = (byte) 0;
+                    info[i] = (byte) 0;
                 }
                 
-                counter++;
+                i++;
             }
+            pos = pos+10+hostLength+nameLength+listsize;
 
-            // Sending the data
-            out.writeInt(info.length);
-            out.write(info);
-            out.flush();
+        }
+          
+        return info;
             
     }
 
@@ -181,12 +190,15 @@ public class ConnectionsHandlerTracker implements Runnable {
                                 // Notifies the node about how many nodes have file chunks
                                 out.writeInt(numberOnodes);
                                 
-                                int num = 0;
-                                while(num<numberOnodes){
+                                byte[] info = sendFileLocationBytes(file_locations,numberOnodes);
+                                    
+                                // Sending the data
+                                out.writeInt(info.length);
+                                System.out.println(info.length);
+                                out.write(info);
+                                out.flush();
 
-                                    sendFileLocationBytes(out,file_locations.get(num));
-                                    num++;
-                                }
+                                System.out.println("Enviei os dados");
                                 
                                 break;
 
