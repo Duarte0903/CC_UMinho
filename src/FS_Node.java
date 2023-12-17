@@ -8,6 +8,7 @@ import org.w3c.dom.Node;
 
 import java.io.*;
 import java.net.*;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 public class FS_Node {
@@ -16,11 +17,13 @@ public class FS_Node {
     private String ip;
     private static int tcpPort = 42069;
     private static int udpPort = 65534;
-    
+    private ObjectOutputStream outputToTracker;
+
     // Files info
     private Map<String,FileInfo> localData;  // Node files
     private static String filesDirectory;
 
+    // UDP ports info
     private Map<Integer,Boolean> portInfo;      
     
     // Constructors
@@ -28,8 +31,7 @@ public class FS_Node {
     public FS_Node(String path) {
         this.setIp(null);
         this.localData = new HashMap<>();
-
-        FS_Node.filesDirectory = path;
+        FS_Node.setFilesDirectory(path);
     
         // Access the files in the specified directory
         File folder = new File(path);
@@ -68,26 +70,75 @@ public class FS_Node {
         return udpPort;
     }
 
-    public Map<String,FileInfo> getLocalData() {
-        return this.localData;
+    public Map<String, FileInfo> getLocalData() {
+        return localData;
     }
-
+    
     public String getFilesDirectory() {
         return FS_Node.filesDirectory;
     }
     
     // Setters
-
+    
     public void setIp(String ip) {
         this.ip = ip;
     }
-
-    public void setLocalData(List<String> localData) {
+    
+    public void setLocalData(Map<String,FileInfo> localData) {
         this.localData = localData;
     }
 
+    public void setOutputToTracker(ObjectOutputStream outputToTracker) {
+        this.outputToTracker = outputToTracker;
+    }
+
+    public static void setFilesDirectory(String filesDirectory) {
+        FS_Node.filesDirectory = filesDirectory;
+    }
     
     // Methods
+
+    public void sendDataBytes(ObjectOutputStream out) throws IOException {
+        
+        int numFiles = this.localData.keySet().size();
+        out.writeInt(numFiles);
+        out.flush();
+        
+        // Storing data in the byte array
+        for (Map.Entry<String, FileInfo> entry : this.localData.entrySet()) {
+            
+            FileInfo aux = entry.getValue();
+            
+            // File name prep
+            String fileName = entry.getKey();
+            byte[] fileNameBytes = fileName.getBytes();
+            int nameLength = fileNameBytes.length;
+            //System.out.println(fileName);
+            
+            // File size
+            long size = aux.getSize();
+            //System.out.println(size);
+            //System.out.println();
+            
+            byte[] info = new byte[5+nameLength];
+            
+            // Storing file name
+            info[0] = (byte) nameLength;
+            System.arraycopy(fileNameBytes, 0, info, 1, nameLength);
+
+            // Storing the file size
+            info[1+nameLength] = (byte) (size >> 24);
+            info[2+nameLength] = (byte) (size >> 16);
+            info[3+nameLength] = (byte) (size >> 8);
+            info[4+nameLength] = (byte) size;
+
+            out.writeInt(info.length);
+            out.write(info);
+            out.flush();
+            
+        }
+
+    }
 
     public void printFileNames() {
         if (this.localData.isEmpty()) {
@@ -100,7 +151,7 @@ public class FS_Node {
         }
     }
 
-    private static byte[] readFileToByteArray(File file) {
+    public static byte[] readFileToByteArray(File file) {
         
         FileInputStream fis = null;
         // Creating a byte array using the length of the file
@@ -117,19 +168,19 @@ public class FS_Node {
         return bArray;
     }
 
-    private int getUniquePort() {
+    public int getUniquePort() {
 
-        for (Map.Entry<Integer, Boolean> entry : portInfo.entrySet()) {
+        for (Map.Entry<Integer, Boolean> entry : this.portInfo.entrySet()) {
             if (!entry.getValue()) {
                 int port = entry.getKey();
-                portInfo.put(port, true);
+                this.portInfo.put(port, true);
                 return port;
             }
         }
         return -1;
     }
 
-    private static void sendAck(int foundLast, DatagramSocket socket, InetAddress address, int port, boolean isClosing) throws IOException {
+    public static void sendAck(int foundLast, DatagramSocket socket, InetAddress address, int port, boolean isClosing) throws IOException {
      
         // Send acknowledgement
         byte[] ackPacket = new byte[3];
@@ -151,216 +202,100 @@ public class FS_Node {
         System.out.println("Sent ack: Sequence Number = " + foundLast);
     }
 
-    private void sendRequests(String fileName, List<FileInfo> fileLocations, FS_Node node) throws FileNotFoundException {
-                          
-        class Request implements Runnable {
-            
-            private String fileName;
-            private String nodeAdress;
-            private FS_Node node;
-            private FileOutputStream out;
+    /* 
+    public String chooseNode(){
+        String selectedNode = null;
 
-    
-            public Request(String fileName, String nodeAdress, FS_Node node, FileOutputStream out) {
-                this.fileName = fileName;
-                this.nodeAdress = nodeAdress;
-                this.node = node;
-                this.out = out;
-            }
-    
-            @Override
-            public void run() {
-              try {
-
-                // Create a new socket with a dynamically allocated port
-                int localPort = node.getUniquePort();
-                DatagramSocket newSocket = new DatagramSocket(localPort);
-              
-                try {
-
-                    DatagramPacket request = createRequestDatagram(this.fileName,this.nodeAdress,getNodeUdpPort());
-                    newSocket.send(request);
-
-                    int seq = 0;
-                    int senderPort = 0;
-                    
-                    // Esperar pelo ack do request
-                    while (true) {
-                        byte[] ack = new byte[3]; // Create another packet for datagram ackknowledgement
-                        DatagramPacket ackpack = new DatagramPacket(ack, ack.length);
-                         
-                        int ackSequence = 0;
-                        boolean ackRec = false; 
-
-                        try {
-                            newSocket.setSoTimeout(50); // Waiting for the server to send the ack
-                            newSocket.receive(ackpack);
-                            senderPort = ackpack.getPort();
-                            ackSequence = ((ack[0] & 0xff) << 8) + (ack[1] & 0xff); // Figuring the sequence number
-                            ackRec = true; // We received the ack
-                        } catch (SocketTimeoutException e) {
-                            System.out.println("Socket timed out waiting for ack");
-                            ackRec = false; // We did not receive an ack
-                        }
-
-                        // If the package was received correctly 
-                        if ((ackSequence == seq+1) && (ackRec)) {
-                            seq = ackSequence;
-                            System.out.println("Ack received: Sequence Number = " + ackSequence);
-                            break;
-                        } 
-                        // Package was not received, so we resend it
-                        else {
-                            newSocket.send(request);
-                            System.out.println("Resending: Sequence Number = " + seq);
-                        }
+                // Check for an unchosen node in the available nodes
+                for (String entry : nodes) {
+                    if (!alreadyChoosen.contains(node)) {
+                        selectedNode = entry;
+                        alreadyChoosen.add(entry);
                     }
-
-
-                    // Receber dados
-                    boolean lastChunk = false;
-                    while (!lastChunk) {
-
-                        byte[] message = new byte[1024];
-
-                        DatagramPacket receivedPacket = new DatagramPacket(message, message.length);
-                        
-                        boolean flag = false;
-                        while(!flag){
-                            try {
-                                newSocket.setSoTimeout(50); // Waiting for the server to send the ack
-                                newSocket.receive(receivedPacket);
-                                flag = true;
-                            } catch (SocketTimeoutException e) {
-                                System.out.println("Socket timed out waiting for file chunk");
-                            }
-                        }
-                        message = receivedPacket.getData();
-                        
-                        // Other node info
-                        InetAddress address = receivedPacket.getAddress();
-                        int port = receivedPacket.getPort();
-                        
-                        // Retrieves received sequence
-                        int sequenceNumber = ((message[0] & 0xff) << 8) + (message[1] & 0xff);
-
-                        // Verifies if is eof
-                        if(message[2] == (byte) (1)) lastChunk = true;   
-
-                        // Checks the file name lenght and finds the fileName
-                        int nameLength = (int) message[3];
-
-                        byte[] fileNameBytes = new byte[nameLength];
-                        System.arraycopy(message, 4, fileNameBytes, 0, nameLength); 
-
-                        String fileName = new String(fileNameBytes, StandardCharsets.UTF_8);
-
-                        // Retrieves received checksum
-                        long receivedChecksum =
-                                    ((message[1020] & 0xFFL) << 24) |
-                                    ((message[1021] & 0xFFL) << 16) |
-                                    ((message[1022] & 0xFFL) << 8) |
-                                    (message[1023] & 0xFFL);
-
-                        // Calculate checksum
-                        CRC32 crc = new CRC32();
-                        crc.update(message, 0, 1019); 
-                        long checksum = crc.getValue();
-
-                        byte[] fileByteArray = new byte[1016-nameLength];
-
-                        if (sequenceNumber == (seq+1) ) {
-                            if(receivedChecksum == checksum){
-                                // set the last sequence number to be the one we just received
-                                seq = sequenceNumber;
-                
-                                // Retrieve data from message
-                                System.arraycopy(message, 4+nameLength, fileByteArray, 0, 1016-nameLength);
-                
-                                // Write the retrieved data to the file and print received data sequence number
-                                this.out.write(fileByteArray);
-                                System.out.println("Received: Sequence number:" + seq);
-                
-                                // Send acknowledgement
-                                sendAck(seq+1, newSocket, address, port, false);
-                            
-                            } else {
-                                System.out.println("Expected checksum number: " + checksum + " but received " + receivedChecksum + ". DISCARDING");
-                                // Re send the acknowledgement
-                                sendAck(seq, newSocket, address, port, false);
-                            }
-                        } else {
-                            System.out.println("Expected sequence number: " + (seq + 1) + " but received " + sequenceNumber + ". DISCARDING");
-                            // Re send the acknowledgement
-                            sendAck(seq, newSocket, address, port, false);
-                        }
-                        // Check for last datagram
-                        if (lastChunk) {
-                            this.out.close();
-                        }
-
-                    } 
-                    
-                    int isClosing = 0;
-                    // Receber ack de fecho e enviar ack correspondente e fechar socket
-                    while (true) {
-                        byte[] ack = new byte[3]; // Create another packet for datagram ackknowledgement
-                        DatagramPacket ackpack = new DatagramPacket(ack, ack.length);
-                         
-                        int ackSequence = 0;
-                        boolean ackRec = false; 
-
-                        try {
-                            newSocket.setSoTimeout(50); // Waiting for the server to send the ack
-                            newSocket.receive(ackpack);
-                            ackSequence = ((ack[0] & 0xff) << 8) + (ack[1] & 0xff); // Figuring the sequence number
-                            isClosing = (int) ack[2];
-                            ackRec = true; // We received the ack
-                        } catch (SocketTimeoutException e) {
-                            System.out.println("Socket timed out waiting for ack");
-                            ackRec = false; // We did not receive an ack
-                        }
-
-                        // If the package was received correctly 
-                        if ((ackSequence == seq+2) && (ackRec) && (isClosing==1)) {
-                            seq = ackSequence;
-                            System.out.println("Ack received: Sequence Number = " + ackSequence);
-                            sendAck(seq+1, newSocket, InetAddress.getByName(this.nodeAdress), senderPort, true);
-                            break;
-                        } 
-                    }
-                    
-                    newSocket.setSoTimeout(50);
-                    newSocket.close();
-                    
-                } catch (UnknownHostException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
                 }
-                
-              
-              } catch (SocketException e) {
-                e.printStackTrace();
-              }
-            }
-        }
 
+                boolean foundNode = false;
+                // If all nodes are already chosen, rotate the chosen nodes
+                if (!alreadyChoosen.isEmpty() && !foundNode) {
+                    // Remove the first chosen node and add it to the end
+                    String rotatedNode = alreadyChoosen.remove(0);
+                    alreadyChoosen.add(rotatedNode);
+                    selectedNode = rotatedNode;
+                }
+
+        return null;        
+    }
+    */
+    
+    public int sendRequests(FS_Node node, String fileName, List<FileInfo> fileLocations) throws FileNotFoundException {
+        
+        // Return value
+        int value = 1;
+
+        // File info
+        int lastChunk = fileLocations.get(0).getLastChunk();
+        long size = fileLocations.get(0).getSize();
+
+        // Creating the file in which we will write
         File file = new File(getFilesDirectory() + "/" + fileName);
         FileOutputStream outToFile = new FileOutputStream(file);
 
-        // Para quando formos fazer fragmentacao vamos executar este codigo
-        // onde cada thread vai buscar um certo chunck a um certo nodo
-        int poolSize = 1; 
+        // Map to hold which nodes have the key packet
+        Map<Integer,List<String>> info = new HashMap<>();
+
+        // Inserting info into the map
+        for(int i = 0; i<fileLocations.size(); i++){
+            
+            FileInfo nodeInfo = fileLocations.get(i);
+            List<Boolean> aux = nodeInfo.getChunks();
+
+            for(int j = 0; j <= lastChunk; j++){
+                if(aux.get(j)==true){
+                    info.get(j).add(nodeInfo.getHostIp());
+                }
+            }    
+        }
+        
+        // Creating thread pool of workers
+        int poolSize = 10; 
         ExecutorService threadPool = Executors.newFixedThreadPool(poolSize);
+        
+        List<String> alreadyChoosen = new ArrayList<>();
+        // Algorithm to choose which node to request given chunk
+        for(int chunk = 0; chunk <= lastChunk; chunk++){
+            
+            List<String> nodes = info.get(chunk);
+              
+            if (nodes != null && !nodes.isEmpty()) {
+                
+                String selectedNode = nodes.get(0);
+        
+                if (selectedNode != null) {
 
-        Runnable task = new Request(fileName,fileLocations.get(0), node, outToFile);
+                    // Calculating where we start to read
+                    long startPosition = chunk * 5000;
+                    long endPosition = startPosition + 5000;
 
-        threadPool.submit(task);
+                    if(endPosition>=size) endPosition = size;
 
+                    // Perform the task with the selected node
+                    Runnable task = new Request(node,fileName, selectedNode, startPosition, endPosition, outToFile);
+                    threadPool.submit(task);
+                } else {
+                    // Handle the case where no node can be chosen
+                    System.out.println("No available node in chunk!" + chunk);
+                }
+            } else {
+                System.out.println("Chunk does no exist in any node!" + chunk);
+            }
+        }
+
+        // Sutting down thread pool
         threadPool.shutdown();
+        
+        return value;
     }
-    
+
     public DatagramPacket createRequestDatagram (String fileName, String nodeIp, int port) throws UnknownHostException {
 
         InetAddress receiverAddress = InetAddress.getByName(nodeIp);
@@ -640,38 +575,114 @@ public class FS_Node {
         }
     }
 
+    private static List<FileInfo> getFileLocations(ObjectInputStream input, int numNodes) throws IOException {
+        
+        List<FileInfo> r = new ArrayList<>();
+        int aux = numNodes;
+
+        for (int i = 0; i < aux; i++){ 
+
+            int dataSize = input.readInt();
+            byte[] file = new byte[dataSize]; 
+            input.read(file);
+                
+            // HostIp 
+            int hostLength = file[0];
+            byte[] filehost = new byte[hostLength];
+            System.arraycopy(file, 1, filehost, 0, hostLength);
+            String hostIp = new String(filehost);
+            System.out.println(hostIp);
+
+            // File name 
+            int nameLength = file[1+hostLength];
+            byte[] fileNameBytes = new byte[nameLength];
+            System.arraycopy(file, 2+hostLength, fileNameBytes, 0, nameLength);
+            String fileName = new String(fileNameBytes);
+            //System.out.println(fileName);
+            
+            // File size
+            long size = ((long) (file[2+hostLength+nameLength] & 0xFF) << 24) |
+                        ((long) (file[3+hostLength+nameLength] & 0xFF) << 16) |
+                        ((long) (file[4+hostLength+nameLength] & 0xFF) << 8) |
+                        ( file[5+hostLength+nameLength] & 0xFF);
+            System.out.println(size);
+            
+            // Chunk list
+            
+            int listsize = ((int) (file[6+hostLength+nameLength] & 0xFF) << 24) |
+                            ((int) (file[7+hostLength+nameLength] & 0xFF) << 16) |
+                            ((int) (file[8+hostLength+nameLength] & 0xFF) << 8) |
+                            (file[9+hostLength+nameLength] & 0xFF);
+            System.out.println("Given size: " + listsize);
+            System.out.println("Calculated size: " + size/5000);
+
+            List<Boolean> list = new ArrayList<>();
+            
+            int counter = 10+hostLength+nameLength;
+            while (counter<listsize+10+hostLength+nameLength) {
+            
+                int bool = (int) file[counter];
+                //System.out.println(bool);
+                
+                if(bool==1){
+                  list.add(true);
+                }
+                else{
+                  list.add(false);
+                }
+
+                counter++;
+            }
+            System.out.println("CHEGUEI AQUI"+hostIp);
+
+            FileInfo fileInfo = new FileInfo(hostIp, fileName, size, false);
+
+            fileInfo.setChunks(list);
+
+            r.add(fileInfo);
+
+        }
+
+        return r;
+    }
+
     public static void main(String[] args) {
         String serverIp = "10.0.1.10";
         int serverPort = 42069;
 
-        // Cria a instancia Node
+        // Creates node
         FS_Node node = new FS_Node(args[0]);
     
-        // Estabelece a conecxao com o Servidor
+        // Establishes connection with server
         try {
             Socket serverSocket = new Socket(serverIp, serverPort);
             System.out.println("\u001B[32m Node connected to tracker.\u001B[0m\n");
             
-            // Cria os pipes de escrita e leitura
+            // Creates pipes
             ObjectOutputStream output = new ObjectOutputStream(serverSocket.getOutputStream());
             ObjectInputStream input = new ObjectInputStream(serverSocket.getInputStream());
 
-            // Recebe o seu endereco de ip
+            // Setting node output to Tracker
+            node.setOutputToTracker(output);
+
+            // Receives his ip adress
             String nodeIp = (String) input.readObject();
             node.setIp(nodeIp);
-            //System.out.println("Received IP address from tracker: " + nodeIp);
 
-            // Notifica o servidor dos ficheiros que tem armazenados
-            output.writeObject(node.getLocalData());
-
+            // Notifies server of the files that the node has
+            node.sendDataBytes(output);
+            
+            // Opens main UDP socket
             DatagramSocket udpSocket = new DatagramSocket(getNodeUdpPort());
 
+            // Thread that handles new incoming request from other nodes
             Thread udpRequestsThread = new Thread( () -> {
                 byte[] message = new byte[1024];
 
                 while (true) {
                     DatagramPacket packet = new DatagramPacket(message, message.length);
-                    
+
+                    // Receiving packet
                     try {
                         udpSocket.receive(packet);
                         InetAddress address = packet.getAddress();
@@ -679,7 +690,7 @@ public class FS_Node {
         
                         System.out.println("Received request from other node!");
 
-                        // Process the received datagram
+                        // Process the received packet
                         node.processRequests(packet.getData(), address, port);
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -688,6 +699,7 @@ public class FS_Node {
             });
             udpRequestsThread.start();
 
+            // Reading the inputs in the terminal
             while (true) {           
                 try {
                     BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
@@ -698,31 +710,32 @@ public class FS_Node {
                     List<String> commandArguments = Arrays.asList(Arrays.copyOfRange(commandParts, 1, commandParts.length));
                         
                     switch (commandName) {
+                        // User want to donwload a file
                         case "get": 
                             String fileName = commandArguments.get(0);
                             output.writeObject("get " + fileName);
-                            List<FileInfo> fileLocations = (List<FileInfo>)input.readObject();  // Endereços IP dos nodos onde está o ficheiro
 
-                            if (fileLocations.isEmpty()) {
+                            int numNodes = input.readInt();
                             
-                                System.out.println("\u001B[31m The requested file is not available in any nodes. \u001B[0m\n");
-                            
-                            } else {
-                            
-                                System.out.println("File location: " + fileLocations.get(0) + "\n");
-                                // Temos de desenvolver algoritmo para verificar onde vamos buscar cada chunk do ficheiro
-                            
+                            if(numNodes>0){
+                                // Reading byte array with the information about the file locations
+                                List<FileInfo> fileLocations = getFileLocations(input,numNodes); 
+                                
                                 System.out.println("Sending requests.");
-                                node.sendRequests(fileName,fileLocations,node);
-
-                            }
+                                //node.sendRequests(node,fileName,fileLocations); 
+                            
+                            } else{
+                                System.out.println("\u001B[31m The requested file is not available in any nodes. \u001B[0m\n");
+                            } 
 
                             break;
 
+                        // User wants to know with files they have
                         case "printFiles":
                             node.printFileNames();
                             break;
                         
+                        // User want to exit connections
                         case "exit":
                             output.writeObject(commandName);
                             serverSocket.close();

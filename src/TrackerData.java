@@ -11,7 +11,8 @@ public class TrackerData {
     
     
     private Map<String, Map<String,FileInfo>> nodesFiles;   // Key: Node Ip
-                                                      // Value : Node file info                                             
+                                                            // Value : Key: File Name 
+                                                            //         Value: Node file info                                             
 
     // Data safety variable
     public ReentrantReadWriteLock dataLock;                                                
@@ -88,19 +89,31 @@ public class TrackerData {
         }
     }
 
-    public void insertNewNode(String nodeIp, Map<String,FileInfo> files) {
+    public void insertNodeData(String nodeIp, List<FileInfo> files) {
         try {
             this.dataLock.writeLock().lock();
-            this.nodesFiles.put(nodeIp, files);
-            this.numConnectedNodes++;
+            
+            if(!getNodesFilesMap().containsKey(nodeIp)){
+                this.numConnectedNodes++;
+            }
+
+            if(files!=null){
+                for(FileInfo file : files){
+                    getNodesFilesMap().get(nodeIp).put(file.getFileName(),file);
+                }
+            } else {
+                getNodesFilesMap().put(nodeIp, new HashMap<>());
+            }
+
         } finally {
             this.dataLock.writeLock().unlock();
         }
     }
 
-    public void insertNodeData(String nodeIp, FileInfo fileInfo) {
+    public void insertNodeDataSingle(String nodeIp, FileInfo fileInfo) {
         try {
             this.dataLock.writeLock().lock();
+            
             this.nodesFiles.get(nodeIp).put(fileInfo.getFileName(),fileInfo);
         } finally {
             this.dataLock.writeLock().unlock();
@@ -118,7 +131,6 @@ public class TrackerData {
     
                 if (files.containsKey(fileName)) {
                     fileNodes.add(files.get(fileName));
-                    break; // Break after finding the first node with the file (assuming uniqueness)
                 }
             }
             return fileNodes;
