@@ -15,7 +15,7 @@ public class FileInfo {
         this.fileName = fileName;
         this.size = size;
 
-        if(size%size==0){
+        if(size%5000==0){
             this.lastChunk = ((int) (this.size/5000)) - 1;
         } else{
             this.lastChunk = (int) (this.size/5000);

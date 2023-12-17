@@ -727,7 +727,7 @@ public class FS_Node {
                                 int dataSize = input.readInt();
                                 System.out.println("Data size: " + dataSize);
                                 byte[] file = new byte[dataSize]; 
-                                input.read(file);
+                                input.readFully(file);
 
                                 // Reading byte array with the information about the file locations
                                 List<FileInfo> fileLocation = node.getFileLocations(file, numNodes); 
