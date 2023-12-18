@@ -16,15 +16,15 @@ public class FileInfo {
         this.size = size;
 
         if(size%5000==0){
-            this.lastChunk = ((int) (this.size/5000)) - 1;
+            this.lastChunk = ((int) (this.size/10000)) - 1;
         } else{
-            this.lastChunk = (int) (this.size/5000);
+            this.lastChunk = (int) (this.size/10000);
         }
 
         if(isOriginal){
             this.chunks = new ArrayList<Boolean>(Collections.nCopies(this.lastChunk+1, true));
         } else{
-            this.chunks = new ArrayList<>();
+            this.chunks = new ArrayList<Boolean>(Collections.nCopies(this.lastChunk+1, false));
         }
     }
 

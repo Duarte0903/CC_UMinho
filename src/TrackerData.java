@@ -64,6 +64,22 @@ public class TrackerData {
 
     // Methods
 
+    public void insertChunkIntoMem(String nodeAddress, String file, int chunk, long size){
+        this.dataLock.writeLock().lock();
+        try{
+            Map<String,FileInfo> aux = getNodesFilesMap().get(nodeAddress);
+                                
+            if(aux.containsKey(file)){
+                aux.get(file).setChunk(chunk); 
+            }else{
+                aux.put(file, new FileInfo(nodeAddress, file, size, false));
+                aux.get(file).setChunk(chunk);
+            }
+        } finally {
+            this.dataLock.writeLock().unlock();
+        }
+    }
+
     public void printConnectedNodes() {
         System.out.println("Connected nodes:");
 

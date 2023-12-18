@@ -19,14 +19,18 @@ public class Request implements Runnable{
 
     // File related info
     private String fileName;
+    private long fileSize;
     private long startPosition;
+    private int chunk;
     private long endPosition;
     private RandomAccessFile outputToFile;
 
-    public Request(FS_Node node,String fileName, String receiverIp, long startPosition, long endPosition, RandomAccessFile out) {
+    public Request(FS_Node node,String fileName,long fileSize, int chunk, String receiverIp, long startPosition, long endPosition, RandomAccessFile out) {
         this.node = node;
         this.receiverIp = receiverIp;
         this.fileName = fileName;
+        this.fileSize = fileSize;
+        this.chunk = chunk;
         this.startPosition = startPosition;
         this.endPosition = endPosition;
         this.outputToFile = out;
@@ -79,16 +83,15 @@ public class Request implements Runnable{
                     } 
                     // Package was not received, so we resend it
                     else {
-                        System.out.println("HUMMMMM");
+                        //System.out.println("A REENVIAR PEDIDO");
                         newSocket.send(request);
                         //System.out.println("Resending: Sequence Number = " + seq);
                     }
                 }
 
-                System.out.println();
-                System.out.println("PEDIDO ENVIADO COM SUCESSO");
-                System.out.println("START: " + startPosition + " END: " + endPosition);
-                System.out.println();
+                //System.out.println();
+                //System.out.println("PEDIDO ENVIADO COM SUCESSO  " + "START: " + startPosition + " END: " + endPosition);
+                //System.out.println();
 
                 // Receber dados
                 boolean lastChunk = false;
@@ -112,7 +115,7 @@ public class Request implements Runnable{
                     if(receivedPacket.getPort() == senderPort){
                     
                         message = receivedPacket.getData();
-                        System.out.println("RECEIVED SOME DATA");
+                        //System.out.println("RECEIVED SOME DATA");
                             
                         // Gets other node info
                         address = receivedPacket.getAddress();
@@ -141,9 +144,6 @@ public class Request implements Runnable{
                         crc.update(message, 0, 1019); 
                         long checksum = crc.getValue();
 
-                        // Creates the array that is going to be writen in the file
-                        byte[] fileByteArray = new byte[1016-nameLength];
-
                         // Checks sequence number
                         if (sequenceNumber == (seq+1) ) {
                             // Checks if data is ok
@@ -153,11 +153,15 @@ public class Request implements Runnable{
                                     //System.out.println("Received: Sequence number:" + seq);
                                     seq = sequenceNumber+1;
                     
+                                    // Creates the array that is going to be writen in the file
+                                    byte[] fileByteArray = new byte[1016-nameLength];
+
                                     // Retrieve data from message
-                                    if(lastChunk){
+                                    if((startPosition + 1016-nameLength) >= endPosition){
                                         System.arraycopy(message, 4+nameLength, fileByteArray, 0, (int)(endPosition-startPosition));
-                                        //System.out.println();
-                                        //System.out.println("ESCREVI DA POSICAO " +startPosition+ " A POSICAO " + (startPosition+endPosition-startPosition));
+                                        //String temp = new String(fileByteArray);
+                                        //System.out.println(temp);
+                                        //System.out.println("ESCREVI NA POSICAO " +startPosition+ " A QUANTIDADE: " + (int)(endPosition-startPosition));
                                         //System.out.println();
                                     } else{
                                         System.arraycopy(message, 4+nameLength, fileByteArray, 0, 1016-nameLength);
@@ -239,7 +243,24 @@ public class Request implements Runnable{
                         }
                     }
 
-                }    
+                }
+
+                node.getLock().lock();
+                try{
+                    String data = "insert " + this.fileName + " " + this.chunk + " " + this.fileSize;
+                    node.getOutputToTracker().writeObject(data);
+                    //System.out.println(data);
+                } finally {
+                    node.getLock().unlock();
+                }
+
+                int aux = 0;
+                if(this.fileSize%5000==0){
+                    aux = ((int) (this.fileSize/10000)) - 1;
+                } else{
+                    aux = (int) (this.fileSize/10000);
+                }
+                System.out.println("GOT CHUNK: " + this.chunk + " LAST: "+ aux);
                 newSocket.setSoTimeout(50);
                 newSocket.close();
                     

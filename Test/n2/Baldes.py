@@ -120,3 +120,4 @@ class Balde():
             lista_acoes.append(self.mostraA(caminho[i], caminho[i+1]))
             i=i+1
         return lista_acoes
+        

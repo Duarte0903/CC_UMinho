@@ -48,7 +48,7 @@ public class FS_Tracker {
             terminalTracker.start();
                 
 
-            while (true) {
+            while (true & !serverSocket.isClosed()) {
                 Socket nodeSocket = serverSocket.accept();
                 Thread t = new Thread(new ConnectionsHandlerTracker(nodeSocket,serverData));
                 t.start();

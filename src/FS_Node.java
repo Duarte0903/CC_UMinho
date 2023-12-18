@@ -80,6 +80,10 @@ public class FS_Node {
         return localData;
     }
     
+    public ObjectOutputStream getOutputToTracker() {
+        return outputToTracker;
+    }
+
     public String getFilesDirectory() {
         return FS_Node.filesDirectory;
     }
@@ -214,31 +218,6 @@ public class FS_Node {
         // For debugging reasons
         //System.out.println("Sent ack: Sequence Number = " + foundLast);
     }
-
-    /* 
-    public String chooseNode(){
-        String selectedNode = null;
-
-                // Check for an unchosen node in the available nodes
-                for (String entry : nodes) {
-                    if (!alreadyChoosen.contains(node)) {
-                        selectedNode = entry;
-                        alreadyChoosen.add(entry);
-                    }
-                }
-
-                boolean foundNode = false;
-                // If all nodes are already chosen, rotate the chosen nodes
-                if (!alreadyChoosen.isEmpty() && !foundNode) {
-                    // Remove the first chosen node and add it to the end
-                    String rotatedNode = alreadyChoosen.remove(0);
-                    alreadyChoosen.add(rotatedNode);
-                    selectedNode = rotatedNode;
-                }
-
-        return null;        
-    }
-    */
     
     // CORRETA
     public int sendRequests(FS_Node node, String fileName, List<FileInfo> fileLocations) throws IOException {
@@ -278,7 +257,7 @@ public class FS_Node {
         int poolSize = 10; 
         ExecutorService threadPool = Executors.newFixedThreadPool(poolSize);
         
-        System.out.println("PEDIDOS NECESSARIOS: " + (lastChunk+1));
+        //System.out.println("PEDIDOS NECESSARIOS: " + (lastChunk+1));
         List<String> alreadyChoosen = new ArrayList<>();
         for(int chunk = 0; chunk <= lastChunk; chunk++){
             
@@ -289,20 +268,40 @@ public class FS_Node {
             if (nodes != null && !nodes.isEmpty()) {
                 
                 // Chamada do algoritmos para escolher a qual ir buscar
-                String selectedNode = nodes.get(0);
-        
-                if (selectedNode != null) {
+                String selectedNode = null;
+                boolean foundNode = false;
+                int lastPos = alreadyChoosen.size()-1;
+
+                // Check for an unchosen node in the available nodes
+                for (String entry : nodes) {
+                    if (!alreadyChoosen.contains(entry)) {
+                        selectedNode = entry;
+                        foundNode = true;
+                    }
+                }
+
+                // If all nodes are already chosen, rotate the chosen nodes
+                if (!alreadyChoosen.isEmpty() && !foundNode) {
+                    // Remove the first chosen node and add it to the end
+                    String rotatedNode = alreadyChoosen.remove(lastPos);
+                    selectedNode = rotatedNode;
+                    foundNode = true;
+                }
+
+                alreadyChoosen.add(0, selectedNode);
+
+                if (selectedNode != null && foundNode) {
 
                     // Calculating where we start to read
-                    long startPosition = chunk * 5000;
-                    long endPosition = startPosition + 5000;
+                    long startPosition = chunk * 10000;
+                    long endPosition = startPosition + 10000;
 
                     if(chunk==lastChunk){
                         endPosition = size;
                     }
                         
                     // Perform the task with the selected node
-                    Runnable task = new Request(node,fileName, selectedNode, startPosition, endPosition, output);
+                    Runnable task = new Request(node,fileName,size,chunk, selectedNode, startPosition, endPosition, output);
                     threadPool.submit(task);
                 } else {
                     // Handle the case where no node can be chosen
@@ -319,6 +318,12 @@ public class FS_Node {
 
         // Sutting down thread pool
         threadPool.shutdown();
+
+        System.out.println();
+        System.out.println("FULLY DOWNLOADED");
+        System.out.println();
+
+        node.localData.put(fileName, new FileInfo(node.getIp(), fileName, fileLocations.get(0).getSize(), true)); 
         
         return value;
     }
@@ -422,7 +427,7 @@ public class FS_Node {
 
             // Sending the data
             
-            System.out.println("SENDING CHUNK START POSITION: " + i);
+            //System.out.println("SENDING CHUNK START POSITION: " + i);
             DatagramPacket sendPacket = new DatagramPacket(message, message.length, senderAddress, port);
             newSocket.send(sendPacket);
             
@@ -485,8 +490,7 @@ public class FS_Node {
 
                 boolean flag = true;   
                 while(flag){
-                    System.out.println("PROCESSING REQUEST FROM NODE.");
-
+                    
                     int lastSequence = 0;
                     
                     // Retrieves received sequence
@@ -497,9 +501,9 @@ public class FS_Node {
 
                     byte[] fileNameBytes = new byte[nameLength];
                     System.arraycopy(message, 4, fileNameBytes, 0, nameLength); 
-
+                    
                     String fileName = new String(fileNameBytes, StandardCharsets.UTF_8);
- 
+                    
                     int nextPosition = 4 + nameLength;
 
                     // Retrieves received start position
@@ -508,10 +512,10 @@ public class FS_Node {
                                          ((message[nextPosition+2] & 0xFFL) << 8) |
                                          (message[nextPosition+3] & 0xFFL);
 
-                    // Retrieves received end position
+                                         // Retrieves received end position
                     long endPosition = ((message[nextPosition+4] & 0xFFL) << 24) |
-                                        ((message[nextPosition+5] & 0xFFL) << 16) |
-                                        ((message[nextPosition+6] & 0xFFL) << 8) |
+                    ((message[nextPosition+5] & 0xFFL) << 16) |
+                    ((message[nextPosition+6] & 0xFFL) << 8) |
                                         (message[nextPosition+7] & 0xFFL);            
 
                     // Retrieves received checksum
@@ -521,31 +525,32 @@ public class FS_Node {
                                     ((message[1022] & 0xFFL) << 8) |
                                     (message[1023] & 0xFFL);
 
-                    // Calculate checksum
-                    CRC32 crc = new CRC32();
+                                    // Calculate checksum
+                                    CRC32 crc = new CRC32();
                     crc.update(message, 0, 1019); 
                     long checksum = crc.getValue();
-
+                    
                     // Check if sequence is correct
                     if (receivedChecksum == checksum) {
-                            
-                            System.out.println("SENDING ACK FOR NODE REQUEST");
-                            System.out.println("START: " + startPosition + " END: " + endPosition);
+                        
+                        //System.out.println("SENDING ACK FOR NODE REQUEST");
+                        //System.out.println("PROCESSING REQUEST FROM NODE." + senderAddress);
+                        
                             sendAck(sequenceNumber+1, newSocket, senderAddress, port, false);
                             sequenceNumber++;
 
                             File requestedFile = new File(this.getFilesDirectory() + "/" + fileName);
                             byte[] fileByteArray = readFileToByteArray(requestedFile);
 
-                            System.out.println("SENDING FILE");
+                            //System.out.println("SENDING CHUNK");
                             lastSequence = sendFile(newSocket, senderAddress, port, sequenceNumber+1, fileName, fileByteArray, startPosition, endPosition);
                             
 
                             if(lastSequence==-1){
-                                System.out.println("FILE SENT FAIL.");
+                                //System.out.println("CHUNK SENT FAIL.");
                                 flag=false;
                             } else {
-                                System.out.println("FILE SENT");
+                                System.out.println(" CHUNK NUMBER "+ (startPosition/10000) +"  --> SENT TO " + senderAddress);
                             }
 
                     } else {
@@ -557,11 +562,11 @@ public class FS_Node {
                     }        
                                   
                     if(flag){
-                        System.out.println("SENDING CLOSING ACK");
+                        //System.out.println("SENDING CLOSING ACK");
                         // Tem de enviar ack a dizer que vai fechar
                         sendAck(lastSequence, newSocket, senderAddress, port, true);
 
-                        System.out.println("WAITING FOR CLOSING ACK");
+                        //System.out.println("WAITING FOR CLOSING ACK");
                         // Tem de receber ack a dizer que a mensagem foi recebida e que o outro nodo tambem vai fechar?
                         while (true) {
                                 
@@ -591,7 +596,6 @@ public class FS_Node {
                             }    
                                 // Package was not received, so we resend it
                             else {
-                                //System.out.println(lastSequence);
                                 sendAck(lastSequence, newSocket, senderAddress, port, true);
                                 //System.out.println("Resending: Sequence Number = " + lastSequence);
                             }
@@ -604,7 +608,7 @@ public class FS_Node {
                     e.printStackTrace();
                 } finally {
                     // Close the socket when done
-                    System.out.println("CLOSING SECUNDARY SOCKET");
+                    //System.out.println("CLOSING SECUNDARY SOCKET");
                     newSocket.close();
                     this.portInfo.put(localPort, false);
                 }
@@ -769,8 +773,6 @@ public class FS_Node {
                                 
                                 if(numNodes>0){
 
-                                    List<FileInfo> files = new ArrayList<>();
-
                                     int dataSize = input.readInt();
                                     //System.out.println("Data size: " + dataSize);
                                     byte[] file = new byte[dataSize]; 
@@ -779,9 +781,12 @@ public class FS_Node {
                                     // Reading byte array with the information about the file locations
                                     List<FileInfo> fileLocations = node.getFileLocations(file, numNodes); 
                         
-                                    //System.out.println("Sending requests.");
-                                    node.sendRequests(node,fileName,fileLocations); 
-                                
+                                    System.out.println();
+                                    System.out.println("NOW SENDING REQUESTS");
+                                    System.out.println();
+
+                                    node.sendRequests(node,fileName,fileLocations);
+                                    
                                 } else{
                                     System.out.println("\u001B[31m The requested file is not available in any nodes. \u001B[0m\n");
                                 } 

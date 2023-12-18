@@ -46,7 +46,6 @@ public class ConnectionsHandlerTracker implements Runnable {
         this.localData.insertNodeDataSingle(nodeIp, fileInfo);
     }
 
-
     private byte[] sendFileLocationBytes(List<FileInfo> fileList, int numberNodes) throws IOException {
         
         int estimatedSize = 0;
@@ -66,22 +65,22 @@ public class ConnectionsHandlerTracker implements Runnable {
             String hostIp = fileInfo.getHostIp();
             byte[] filehost = hostIp.getBytes();
             int hostLength = filehost.length;
-            System.out.println(hostIp);
+            //System.out.println(hostIp);
 
             // File name prep
             String fileName = fileInfo.getFileName();
             byte[] fileNameBytes = fileName.getBytes();
             int nameLength = fileNameBytes.length;
-            System.out.println(fileName);
+            //System.out.println(fileName);
             
             // File size
             long size = fileInfo.getSize();
-            System.out.println(size);
+            //System.out.println(size);
             
             List<Boolean> list = fileInfo.getChunks();
             int listsize = list.size();
-            System.out.println(listsize);
-            System.out.println();
+            //System.out.println(listsize);
+            //System.out.println();
             
             // Storing resident node ip
             info[pos] = (byte) hostLength;
@@ -120,7 +119,6 @@ public class ConnectionsHandlerTracker implements Runnable {
         return info;
             
     }
-
 
     @Override
     public void run() {
@@ -171,7 +169,7 @@ public class ConnectionsHandlerTracker implements Runnable {
 
                     if (obj instanceof String) {
                         String inp = (String) obj;
-                        System.out.println(inp);
+                        //System.out.println(inp);
 
                         String[] commandParts = inp.split(" ");
                         //System.out.println("Command Parts: " + Arrays.toString(commandParts));
@@ -194,11 +192,11 @@ public class ConnectionsHandlerTracker implements Runnable {
                                     
                                 // Sending the data
                                 out.writeInt(info.length);
-                                System.out.println(info.length);
+                                //System.out.println(info.length);
                                 out.write(info);
                                 out.flush();
 
-                                System.out.println("Enviei os dados");
+                                //System.out.println("Enviei os dados");
                                 
                                 break;
 
@@ -207,8 +205,11 @@ public class ConnectionsHandlerTracker implements Runnable {
                                 // Insert file in node data
                                 String file = commandArguments.get(0);
                                 int chunk = Integer.parseInt(commandArguments.get(1));
+                                long size = Long.parseLong(commandArguments.get(2));
 
-                                // Fazer coisas
+                                this.localData.insertChunkIntoMem(nodeAddress.getHostAddress(),file,chunk,size);
+
+                                //System.out.println(chunk + " Chunk inserted in node" + nodeAddress.getHostAddress() + " file: " + file);
 
                                 break;
 
@@ -226,7 +227,7 @@ public class ConnectionsHandlerTracker implements Runnable {
                         System.out.println("Invalid object received from the node.");
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                   
                 }
             }
             // Deletes all data in the data base referent to the node
