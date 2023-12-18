@@ -1,5 +1,6 @@
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -20,9 +21,9 @@ public class Request implements Runnable{
     private String fileName;
     private long startPosition;
     private long endPosition;
-    private FileOutputStream outputToFile;
+    private RandomAccessFile outputToFile;
 
-    public Request(FS_Node node,String fileName, String receiverIp, long startPosition, long endPosition, FileOutputStream out) {
+    public Request(FS_Node node,String fileName, String receiverIp, long startPosition, long endPosition, RandomAccessFile out) {
         this.node = node;
         this.receiverIp = receiverIp;
         this.fileName = fileName;
@@ -31,22 +32,25 @@ public class Request implements Runnable{
         this.outputToFile = out;
     }
             
-        @Override
-        public void run() {
+    @Override
+    public void run() {
             try {
 
             // Create a new socket with a dynamically allocated port
             int localPort = node.getUniquePort();
+            //System.out.println(localPort);
             DatagramSocket newSocket = new DatagramSocket(localPort);
               
             try {
 
-                DatagramPacket request = node.createRequestDatagram(this.fileName,receiverIp,FS_Node.getNodeUdpPort());
+                DatagramPacket request = node.createRequestDatagram(this.fileName,this.receiverIp,FS_Node.getNodeUdpPort(),this.startPosition,this.endPosition);
                 newSocket.send(request);
-
+                
                 int seq = 0;
                 int senderPort = 0;
-                    
+                
+                InetAddress address = null;
+            
                 // Esperar pelo ack do request
                 while (true) {
                     byte[] ack = new byte[3]; // Create another packet for datagram ackknowledgement
@@ -58,144 +62,186 @@ public class Request implements Runnable{
                     try {
                         newSocket.setSoTimeout(50); // Waiting for the server to send the ack
                         newSocket.receive(ackpack);
+                        address = ackpack.getAddress();
                         senderPort = ackpack.getPort();
                         ackSequence = ((ack[0] & 0xff) << 8) + (ack[1] & 0xff); // Figuring the sequence number
                         ackRec = true; // We received the ack
                     } catch (SocketTimeoutException e) {
-                            System.out.println("Socket timed out waiting for ack");
+                            //System.out.println("Socket timed out waiting for ack");
                             ackRec = false; // We did not receive an ack
-                        }
-
-                        // If the package was received correctly 
-                        if ((ackSequence == seq+1) && (ackRec)) {
-                            seq = ackSequence;
-                            System.out.println("Ack received: Sequence Number = " + ackSequence);
-                            break;
-                        } 
-                        // Package was not received, so we resend it
-                        else {
-                            newSocket.send(request);
-                            System.out.println("Resending: Sequence Number = " + seq);
-                        }
                     }
 
-                    InetAddress address;
+                    // If the package was received correctly 
+                    if ((ackSequence == seq+1) && (ackRec)) {
+                        seq = ackSequence;
+                        //System.out.println("Ack received: Sequence Number = " + ackSequence);
+                        break;
+                    } 
+                    // Package was not received, so we resend it
+                    else {
+                        System.out.println("HUMMMMM");
+                        newSocket.send(request);
+                        //System.out.println("Resending: Sequence Number = " + seq);
+                    }
+                }
 
-                    // Receber dados
-                    boolean lastChunk = false;
-                    while (!lastChunk) {
+                System.out.println();
+                System.out.println("PEDIDO ENVIADO COM SUCESSO");
+                System.out.println("START: " + startPosition + " END: " + endPosition);
+                System.out.println();
 
-                        byte[] message = new byte[1024];
+                // Receber dados
+                boolean lastChunk = false;
+                while (!lastChunk) {
 
-                        DatagramPacket receivedPacket = new DatagramPacket(message, message.length);
-                        
-                        boolean flag = false;
-                        while(!flag){
-                            try {
-                                newSocket.setSoTimeout(50); // Waiting for the server to send the ack
-                                newSocket.receive(receivedPacket);
-                                flag = true;
-                            } catch (SocketTimeoutException e) {
-                                System.out.println("Socket timed out waiting for file chunk");
-                            }
+                    // Cria array para guardar mensagem
+                    byte[] message = new byte[1024];
+                    DatagramPacket receivedPacket = new DatagramPacket(message, message.length);
+                    
+                    // Espera pela rececao de dados
+                    boolean flag = false;
+                    while(!flag){
+                        try {
+                            newSocket.setSoTimeout(50); // Waiting for the server to send the ack
+                            newSocket.receive(receivedPacket);
+                            flag = true;
+                        } catch (SocketTimeoutException e) {
+                            //System.out.println("Socket timed out waiting for file chunk");
                         }
+                    }
+                    if(receivedPacket.getPort() == senderPort){
+                    
                         message = receivedPacket.getData();
-                        
-                        // Other node info
+                        System.out.println("RECEIVED SOME DATA");
+                            
+                        // Gets other node info
                         address = receivedPacket.getAddress();
                         int port = receivedPacket.getPort();
-                        
+                            
                         // Retrieves received sequence
                         int sequenceNumber = ((message[0] & 0xff) << 8) + (message[1] & 0xff);
 
-                        // Verifies if is eof
+                        // Verifies if is end of receiving data
                         if(message[2] == (byte) (1)) lastChunk = true;   
 
                         // Checks the file name lenght and finds the fileName
                         int nameLength = (int) message[3];
-
                         byte[] fileNameBytes = new byte[nameLength];
                         System.arraycopy(message, 4, fileNameBytes, 0, nameLength); 
-
                         String fileName = new String(fileNameBytes, StandardCharsets.UTF_8);
 
                         // Retrieves received checksum
-                        long receivedChecksum =
-                                    ((message[1020] & 0xFFL) << 24) |
-                                    ((message[1021] & 0xFFL) << 16) |
-                                    ((message[1022] & 0xFFL) << 8) |
-                                    (message[1023] & 0xFFL);
+                        long receivedChecksum = ((message[1020] & 0xFFL) << 24) |
+                                                ((message[1021] & 0xFFL) << 16) |
+                                                ((message[1022] & 0xFFL) << 8) |
+                                                (message[1023] & 0xFFL);
 
                         // Calculate checksum
                         CRC32 crc = new CRC32();
                         crc.update(message, 0, 1019); 
                         long checksum = crc.getValue();
 
+                        // Creates the array that is going to be writen in the file
                         byte[] fileByteArray = new byte[1016-nameLength];
 
+                        // Checks sequence number
                         if (sequenceNumber == (seq+1) ) {
+                            // Checks if data is ok
                             if(receivedChecksum == checksum){
-                                // set the last sequence number to be the one we just received
-                                seq = sequenceNumber;
-                
-                                // Retrieve data from message
-                                System.arraycopy(message, 4+nameLength, fileByteArray, 0, 1016-nameLength);
-                
-                                // Write the retrieved data to the file and print received data sequence number
-                                this.outputToFile.write(fileByteArray);
-                                System.out.println("Received: Sequence number:" + seq);
-                
-                                // Send acknowledgement
-                                node.sendAck(seq+1, newSocket, address, port, false);
-                            
+                                    
+                                    // Set the last sequence number to be the one we just received
+                                    //System.out.println("Received: Sequence number:" + seq);
+                                    seq = sequenceNumber+1;
+                    
+                                    // Retrieve data from message
+                                    if(lastChunk){
+                                        System.arraycopy(message, 4+nameLength, fileByteArray, 0, (int)(endPosition-startPosition));
+                                        //System.out.println();
+                                        //System.out.println("ESCREVI DA POSICAO " +startPosition+ " A POSICAO " + (startPosition+endPosition-startPosition));
+                                        //System.out.println();
+                                    } else{
+                                        System.arraycopy(message, 4+nameLength, fileByteArray, 0, 1016-nameLength);
+                                        ///System.out.println();
+                                        //System.out.println("ESCREVI DA POSICAO " +startPosition+ " A POSICAO " + (startPosition+1016-nameLength));
+                                        //System.out.println();
+                                    }
+                    
+                                    this.node.getLock().lock();
+                                    try{
+                                        // Finds the position to write
+                                        this.outputToFile.seek(startPosition); 
+                                        // Writes the data in the file
+                                        this.outputToFile.write(fileByteArray);
+                                        
+                                        this.startPosition += 1016-nameLength;
+                                    } finally{
+                                        this.node.getLock().unlock();
+                                    } 
+
+                                    if(lastChunk){
+                                        
+                                        node.sendAck(seq, newSocket, address, senderPort, false);                  
+                                        
+                                        //System.out.println("ULTIMO CHUNK");
+                                        
+                                        int isClosing = 0;
+                                        int tillBreak = 20;
+                                        boolean breakFlag = false;
+                                        while (true && tillBreak>=0) {
+                                            byte[] ack = new byte[3]; // Create another packet for datagram ackknowledgement
+                                            DatagramPacket ackpack = new DatagramPacket(ack, ack.length);
+                                            
+                                            int ackSequence = 0;
+                                            boolean ackRec = false; 
+
+                                            try {
+                                                newSocket.setSoTimeout(50); // Waiting for the server to send the ack
+                                                newSocket.receive(ackpack);
+                                                ackSequence = ((ack[0] & 0xff) << 8) + (ack[1] & 0xff); // Figuring the sequence number
+                                                isClosing = (int) ack[2];
+                                                ackRec = true; // We received the ack
+                                            } catch (SocketTimeoutException e) {
+                                                //System.out.println("Socket timed out waiting for ack");
+                                                ackRec = false; // We did not receive an ack
+                                            }
+
+                                            // If the package was received correctly 
+                                            if (((ackSequence == seq+1) && (ackRec) && (isClosing==1)) || breakFlag == true) {
+                                                if(!breakFlag){
+                                                    seq = ackSequence+1;
+                                                    //System.out.println("Ack received: Sequence Number = " + ackSequence);
+                                                    node.sendAck(seq, newSocket, address, senderPort, true);
+                                                } else{
+                                                    //System.out.println("Enviar closing ack pela "+ (10-tillBreak) +" vez. Num:"  + ackSequence);
+                                                    node.sendAck(seq, newSocket, address, senderPort, true);
+                                                    tillBreak--;
+                                                }
+                                                breakFlag = true;
+                                            }
+                                            else{
+                                                node.sendAck(seq, newSocket, address, senderPort, false);
+                                            } 
+                                        }
+                                    } else{
+                                        // Send acknowledgement
+                                        node.sendAck(seq, newSocket, address, port, false);
+                                    }
+                                
                             } else {
-                                System.out.println("Expected checksum number: " + checksum + " but received " + receivedChecksum + ". DISCARDING");
+                                //System.out.println("Expected checksum number: " + checksum + " but received " + receivedChecksum + ". DISCARDING");
                                 // Re send the acknowledgement
                                 node.sendAck(seq, newSocket, address, port, false);
                             }
                         } else {
-                            System.out.println("Expected sequence number: " + (seq + 1) + " but received " + sequenceNumber + ". DISCARDING");
-                            // Re send the acknowledgement
-                            node.sendAck(seq, newSocket, address, port, false);
+                                //System.out.println("Expected sequence number: " + (seq + 1) + " but received " + sequenceNumber + ". DISCARDING");
+                                // Re send the acknowledgement
+                                node.sendAck(seq, newSocket, address, port, false);
                         }
-                        // Check for last datagram
-                        if (lastChunk) {
-                            this.outputToFile.close();
-                        }
-
-                    } 
-                    
-                    int isClosing = 0;
-                    // Receber ack de fecho e enviar ack correspondente e fechar socket
-                    while (true) {
-                        byte[] ack = new byte[3]; // Create another packet for datagram ackknowledgement
-                        DatagramPacket ackpack = new DatagramPacket(ack, ack.length);
-                         
-                        int ackSequence = 0;
-                        boolean ackRec = false; 
-
-                        try {
-                            newSocket.setSoTimeout(50); // Waiting for the server to send the ack
-                            newSocket.receive(ackpack);
-                            ackSequence = ((ack[0] & 0xff) << 8) + (ack[1] & 0xff); // Figuring the sequence number
-                            isClosing = (int) ack[2];
-                            ackRec = true; // We received the ack
-                        } catch (SocketTimeoutException e) {
-                            System.out.println("Socket timed out waiting for ack");
-                            ackRec = false; // We did not receive an ack
-                        }
-
-                        // If the package was received correctly 
-                        if ((ackSequence == seq+2) && (ackRec) && (isClosing==1)) {
-                            seq = ackSequence;
-                            System.out.println("Ack received: Sequence Number = " + ackSequence);
-                            //node.sendAck(seq+1, newSocket, address, senderPort, true);
-                            break;
-                        } 
                     }
-                    
-                    newSocket.setSoTimeout(50);
-                    newSocket.close();
+
+                }    
+                newSocket.setSoTimeout(50);
+                newSocket.close();
                     
                 } catch (IOException e) {
                     e.printStackTrace();

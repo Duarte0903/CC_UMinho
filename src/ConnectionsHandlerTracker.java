@@ -205,6 +205,10 @@ public class ConnectionsHandlerTracker implements Runnable {
                             // Node has new packet donwloaded
                             case "insert":
                                 // Insert file in node data
+                                String file = commandArguments.get(0);
+                                int chunk = Integer.parseInt(commandArguments.get(1));
+
+                                // Fazer coisas
 
                                 break;
 

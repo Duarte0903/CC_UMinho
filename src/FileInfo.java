@@ -7,7 +7,7 @@ public class FileInfo {
     private String hostIp;
     private String fileName;
     private Long size;
-    private Integer lastChunk;
+    private Integer lastChunk; // Last position on chunks array
     private List<Boolean> chunks;
 
     public FileInfo(String hostIp, String fileName,Long size,Boolean isOriginal){
