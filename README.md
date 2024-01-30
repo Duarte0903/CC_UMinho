@@ -5,6 +5,9 @@
 <h1 align="center">Trabalhos práticos da UC de Comunicações por Computador - 2023/2024</h1>
 
 ## TP1: Protocolos da Camada de Transporte <br>
+
+Compreender melhor o funcionamento dos vários protocolos de transporte através de capturas de pacotes com recurso ao software wireshark.
+
 ## TP2: Transferência rápida e fiável de múltiplos servidores em simultâneo 
 
 Um serviço peer-to-peer de transferência de ficheiros permite aos clientes transferir dados de forma mais eficiente de vários nós (seeders) transferindo partes diferentes de pacotes em paralelo.
